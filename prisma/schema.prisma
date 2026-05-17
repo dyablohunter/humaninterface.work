@@ -1,0 +1,617 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  HUMAN
+  AI
+}
+
+enum Urgency {
+  LOW
+  NORMAL
+  URGENT
+  CRITICAL
+}
+
+enum Privacy {
+  PUBLIC
+  PRIVATE
+}
+
+enum TaskType {
+  MICRO
+  TASK
+  JOB
+}
+
+enum TaskStatus {
+  PENDING_DEPOSIT
+  OPEN
+  PAUSED
+  CANCELLING
+  COMPLETED
+  CANCELLED
+  PURGED
+  FAIRNESS_FLAGGED
+}
+
+enum SlotStatus {
+  OPEN
+  PENDING_DEPOSIT
+  CLAIMED
+  SUBMITTED
+  APPROVED
+  REJECTED
+  DISPUTED
+  RESOLVED
+  PAYING
+  PAID
+  REFUNDING
+  REFUNDED
+}
+
+enum EvidenceType {
+  TEXT
+  IMAGE
+  VIDEO
+}
+
+/// Skill taxonomy - 75 sub-categories spanning the AI-resilient skill space.
+/// See src/lib/pricing.ts for difficulty / rarity / rate calibration.
+enum Category {
+  // Medical & life-critical
+  MICROSURGERY
+  SURGERY_GENERAL
+  DENTAL_PROCEDURES
+  EMERGENCY_MEDICAL
+
+  // Skilled trades
+  PLUMBING
+  ELECTRICAL
+  HVAC
+  CARPENTRY
+  AUTO_MECHANIC
+  WELDING_FABRICATION
+  LOCKSMITHING
+  APPLIANCE_REPAIR
+
+  // Fine craft
+  TAILORING
+  JEWELRY_AND_WATCH
+  POTTERY_CERAMICS
+
+  // Vehicles & heavy machinery
+  CDL_DRIVING
+  HEAVY_EQUIPMENT
+  AIRCRAFT_PILOTING
+  MARINE_OPERATION
+  DRONE_COMMERCIAL
+
+  // Performing arts
+  MUSICAL_INSTRUMENT
+  VOCAL_PERFORMANCE
+  ACTING_PERFORMANCE
+
+  // Visual arts & design
+  ILLUSTRATION
+  PHOTOGRAPHY
+  GRAPHIC_DESIGN
+  UX_UI_DESIGN
+
+  // Writing & language
+  FICTION_WRITING
+  COPYWRITING
+  TECHNICAL_WRITING
+  TRANSLATION_RARE_LANGUAGE
+
+  // Culinary & sensory
+  PROFESSIONAL_COOKING
+  BARTENDING
+  WINE_SOMMELIER
+  COFFEE_BARISTA
+
+  // Care & companionship
+  CHILDCARE
+  ELDERCARE
+  HOSPICE_PRESENCE
+  PET_CARE
+
+  // Education & coaching
+  ACADEMIC_TUTORING
+  LANGUAGE_TUTORING
+  CONVERSATION_PARTNER
+
+  // Mental health & emotional
+  LICENSED_THERAPY
+  PEER_SUPPORT
+  EXECUTIVE_COACHING
+
+  // Legal & ethical
+  LEGAL_ADVICE
+  NOTARY_WITNESS
+  COMPLIANCE_REVIEW
+
+  // Social leadership & persuasion
+  PUBLIC_SPEAKING
+  SALES_NEGOTIATION
+  EVENT_HOSTING
+
+  // Courage & high-risk
+  PRIVATE_SECURITY
+  WILDLAND_FIREFIGHTING
+  WILDERNESS_SAR
+  STUNT_PERFORMANCE
+
+  // Ritual & ceremonial presence
+  WEDDING_OFFICIATION
+  FUNERAL_OFFICIATION
+  COURT_TESTIMONY
+
+  // Strategic reasoning
+  CRISIS_CONSULTING
+  INVESTIGATIVE_RESEARCH
+  FORECASTING_ANALYSIS
+
+  // Living-systems & fieldcraft
+  LIVESTOCK_HANDLING
+  WORKING_DOG_TRAINING
+  BEEKEEPING
+  FORAGING_MYCOLOGY
+  COMMERCIAL_FISHING
+  ARBORIST_TREE_CLIMBING
+
+  // Body & wellness services
+  MASSAGE_THERAPY
+  TATTOO_ARTISTRY
+  HAIRSTYLING
+
+  // Low-skill / high-availability (suited to MICRO tasks)
+  LOCAL_OBSERVATION
+  PHOTO_VERIFICATION
+  AUDIO_TRANSCRIPTION
+  DATA_LABELING
+  DELIVERY_RUNNER
+}
+
+enum DisputeStatus {
+  OPEN
+  RESOLVING_FOR_HUMAN
+  RESOLVED_FOR_HUMAN
+  RESOLVED_FOR_AI
+}
+
+enum BidStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  WITHDRAWN
+}
+
+enum ApplicationStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+}
+
+enum TokenTxKind {
+  REGISTER_VERIFY
+  ESCROW_DEPOSIT
+  PAYOUT
+  REFUND
+  SERVICE_FEE
+}
+
+model User {
+  id            String    @id @default(cuid())
+  username      String    @unique
+  solanaPubkey  String    @unique
+  role          Role
+  isAdmin       Boolean   @default(false)
+  suspended     Boolean   @default(false)
+  banned        Boolean   @default(false) // permanent content ban; account kept, posts & funds retained
+  txVerified    Boolean   @default(false)
+  verifyNonce   String?
+  tosAcceptedAt DateTime?
+  tosVersion    String?
+  lastSeenAt    DateTime?
+  createdAt     DateTime  @default(now())
+
+  humanProfile   HumanProfile?
+  tasksPosted    Task[]         @relation("AIPoster")
+  slots          Slot[]         @relation("HumanClaimer")
+  applications   Application[]
+  bids           Bid[]          @relation("HumanBidder")
+  reports        Report[]
+  suggestions    Suggestion[]
+  disputesRaised Dispute[]      @relation("DisputeRaiser")
+  messages       Message[]      @relation("MessageHuman")
+  petitions      Petition[]     @relation("PetitionAuthor")
+  petitionVotes  PetitionVote[]
+
+  @@index([lastSeenAt])
+}
+
+model HumanProfile {
+  userId        String     @id
+  user          User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  categories    Category[]
+  bio           String?
+  // Reputation counters - paid completions by tier vs. rejections.
+  completed     Int        @default(0) // total paid completions (micro + task + job)
+  microPaid     Int        @default(0)
+  taskPaid      Int        @default(0)
+  jobPaid       Int        @default(0)
+  rejectedCount Int        @default(0)
+  disputed      Int        @default(0)
+  avgRating     Float?
+}
+
+model Task {
+  id                String     @id @default(cuid())
+  posterId          String
+  poster            User       @relation("AIPoster", fields: [posterId], references: [id])
+  type              TaskType
+  title             String
+  description       String
+  category          Category
+  urgency           Urgency
+  privacy           Privacy
+  slotCount         Int
+  estimatedMinutes  Int // canonical duration: ≤60 = MICRO, 61-480 = TASK, >480 = JOB
+  // Reverse-auction pricing (per slot, settled in USDT on Solana).
+  statedPriceUsdt   Decimal    @db.Decimal(20, 6) // AI's max per-slot price; escrow basis
+  instantAcceptUsdt Decimal    @db.Decimal(20, 6) // bids ≤ this are auto-accepted
+  minReputation     Float? // optional eligibility gate, 0–1 (paid / (paid + rejected))
+  deadlineAt        DateTime? // optional AI-set deadline for the work itself
+  totalUsdt         Decimal    @db.Decimal(20, 6) // statedPriceUsdt × slotCount × (1 + fee)
+  escrowTxSig       String?
+  status            TaskStatus
+  fairnessFlags     Int        @default(0)
+  invitedHumanId    String?
+  /// ISO 3166-1 alpha-2 country code (uppercase). Null = remote / location-agnostic.
+  country           String?
+  /// Free-text city (trimmed, max 80 chars). Null when country is null.
+  city              String?
+  createdAt         DateTime   @default(now())
+  fundedAt          DateTime?
+  expiresAt         DateTime
+
+  slots        Slot[]
+  milestones   Milestone[]
+  applications Application[]
+  bids         Bid[]
+  reports      Report[]
+  messages     Message[]
+
+  @@index([status, privacy, createdAt])
+  @@index([category])
+  @@index([country, status, privacy, createdAt])
+  @@index([country, city])
+}
+
+model Bid {
+  id         String    @id @default(cuid())
+  taskId     String
+  task       Task      @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  humanId    String
+  human      User      @relation("HumanBidder", fields: [humanId], references: [id])
+  amountUsdt Decimal   @db.Decimal(20, 6) // per-slot pay the human will accept (≤ task.statedPriceUsdt)
+  message    String?
+  status     BidStatus @default(PENDING)
+  slotId     String?   @unique // assigned when ACCEPTED
+  slot       Slot?     @relation(fields: [slotId], references: [id])
+  createdAt  DateTime  @default(now())
+  decidedAt  DateTime?
+
+  @@unique([taskId, humanId])
+  @@index([taskId, status])
+}
+
+model Slot {
+  id              String     @id @default(cuid())
+  taskId          String
+  task            Task       @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  humanId         String?
+  human           User?      @relation("HumanClaimer", fields: [humanId], references: [id])
+  status          SlotStatus
+  awardedUsdt     Decimal?   @db.Decimal(20, 6) // winning bid amount (≤ task.statedPriceUsdt); payout basis
+  claimedAt       DateTime?
+  submittedAt     DateTime?
+  decidedAt       DateTime?
+  rejectionReason String?
+  paidTxSig       String?
+
+  evidence   Evidence[]
+  dispute    Dispute?
+  bid        Bid?
+  milestones Milestone[]
+
+  @@index([taskId])
+  @@index([humanId])
+  @@index([status])
+}
+
+model Milestone {
+  id               String     @id @default(cuid())
+  taskId           String
+  task             Task       @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  slotId           String
+  slot             Slot       @relation(fields: [slotId], references: [id], onDelete: Cascade)
+  sequenceNum      Int
+  hoursForDay      Float
+  status           SlotStatus // OPEN | PENDING_DEPOSIT | CLAIMED | SUBMITTED | APPROVED | REJECTED | DISPUTED | PAID | REFUNDED
+  perMilestoneUsdt Decimal?   @db.Decimal(20, 6) // base USDT before fee
+  usdtAmount       Decimal?   @db.Decimal(20, 6) // total deposit incl. fee (or proportion of task deposit for seq=1)
+  escrowTxSig      String? // AI's deposit TX for seq>=2; null for seq=1 (funded from task escrow)
+  expiresAt        DateTime? // 24h purge window when PENDING_DEPOSIT
+  submittedAt      DateTime?
+  approvedAt       DateTime?
+  paidTxSig        String?
+  rejectionReason  String?
+
+  evidence Evidence[]
+  dispute  Dispute?
+
+  @@unique([slotId, sequenceNum])
+  @@index([taskId])
+}
+
+model Evidence {
+  id             String       @id @default(cuid())
+  slotId         String?
+  slot           Slot?        @relation(fields: [slotId], references: [id], onDelete: Cascade)
+  milestoneId    String?
+  milestone      Milestone?   @relation(fields: [milestoneId], references: [id], onDelete: Cascade)
+  type           EvidenceType
+  bodyText       String?
+  sourcePath     String?
+  pathPrimary    String?
+  pathFallback   String?
+  mimePrimary    String?
+  mimeFallback   String?
+  sizeBytes      Int?
+  durationSec    Int?
+  width          Int?
+  height         Int?
+  transcodedAt   DateTime?
+  transcodeError String?
+  createdAt      DateTime     @default(now())
+
+  @@index([slotId])
+  @@index([milestoneId])
+  @@index([transcodedAt])
+}
+
+model Application {
+  id        String            @id @default(cuid())
+  taskId    String
+  task      Task              @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  humanId   String
+  human     User              @relation(fields: [humanId], references: [id])
+  message   String
+  status    ApplicationStatus @default(PENDING)
+  createdAt DateTime          @default(now())
+
+  @@unique([taskId, humanId])
+}
+
+model Dispute {
+  id          String        @id @default(cuid())
+  slotId      String?       @unique
+  slot        Slot?         @relation(fields: [slotId], references: [id])
+  milestoneId String?       @unique
+  milestone   Milestone?    @relation(fields: [milestoneId], references: [id])
+  raisedById  String
+  raisedBy    User          @relation("DisputeRaiser", fields: [raisedById], references: [id])
+  reason      String
+  status      DisputeStatus @default(OPEN)
+  resolution  String?
+  resolvedAt  DateTime?
+  createdAt   DateTime      @default(now())
+
+  @@index([status])
+}
+
+model Report {
+  id        String   @id @default(cuid())
+  taskId    String
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  reason    String?
+  createdAt DateTime @default(now())
+
+  @@unique([taskId, userId])
+}
+
+model Suggestion {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  body      String
+  createdAt DateTime @default(now())
+}
+
+/// A human-raised proposal to change the platform, protocol, etc. Other
+/// humans vote in support; the admin dashboard surfaces them by vote count.
+model Petition {
+  id          String         @id @default(cuid())
+  authorId    String
+  author      User           @relation("PetitionAuthor", fields: [authorId], references: [id])
+  title       String
+  body        String
+  status      PetitionStatus @default(OPEN)
+  createdAt   DateTime       @default(now())
+  qualifiedAt DateTime? // when it crossed the 51% threshold
+
+  votes PetitionVote[]
+
+  @@index([status, createdAt])
+}
+
+model PetitionVote {
+  id         String   @id @default(cuid())
+  petitionId String
+  petition   Petition @relation(fields: [petitionId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User     @relation(fields: [userId], references: [id])
+  createdAt  DateTime @default(now())
+
+  @@unique([petitionId, userId])
+  @@index([petitionId])
+}
+
+// Direct messages between a task's AI poster and a participating human.
+// One thread per (task, human) pair; the AI side is implicitly task.poster.
+model Message {
+  id          String   @id @default(cuid())
+  taskId      String
+  task        Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  humanId     String
+  human       User     @relation("MessageHuman", fields: [humanId], references: [id])
+  senderRole  Role // HUMAN or AI - which side wrote this
+  body        String
+  readByHuman Boolean  @default(false)
+  readByAi    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  @@index([taskId, humanId, createdAt])
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  action    String
+  payload   Json
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([createdAt])
+}
+
+model TokenTxLog {
+  id          String      @id @default(cuid())
+  /// Solana TX signature. Nullable while the payout is in-flight; gets filled
+  /// after `sendPayout` resolves. Unique when present.
+  signature   String?     @unique
+  kind        TokenTxKind
+  fromAddr    String
+  toAddr      String
+  amountUsdt  Decimal     @db.Decimal(20, 6)
+  /// Deterministic idempotency key for outbound payouts/refunds. Each
+  /// dispute/slot/cancel produces a single canonical memo so retries collide
+  /// on the unique constraint and we never double-pay.
+  memo        String?     @unique
+  taskId      String?
+  slotId      String?
+  milestoneId String?
+  userId      String?
+  confirmedAt DateTime    @default(now())
+
+  @@index([taskId])
+  @@index([fromAddr])
+}
+
+/// Per-(pubkey, nonce) replay-protection record for AI-signed API requests.
+/// Replaces the in-memory `seenNonces` Map so it survives restarts and works
+/// across multiple worker processes.
+model UsedNonce {
+  id        String   @id @default(cuid())
+  pubkey    String
+  nonce     String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@unique([pubkey, nonce])
+  @@index([expiresAt])
+}
+
+/// Generic rate-limit hit log. One row per gated request (IP/email/whatever).
+/// Cleaned out periodically by the worker.
+model RateLimitHit {
+  id        String   @id @default(cuid())
+  key       String
+  createdAt DateTime @default(now())
+
+  @@index([key, createdAt])
+}
+
+model ContactMessage {
+  id        String   @id @default(cuid())
+  name      String
+  email     String
+  body      String
+  userId    String?
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+}
+
+/// Permanent identity blocklist. Both the Solana pubkey AND the username land
+/// here when an account posts/modifies content classified as illegal/inhumane.
+/// Neither the key nor the username can ever register or authenticate again -
+/// the username carries the bad reputation with it forever. The banned
+/// account, its posts, and any escrowed funds are deliberately KEPT.
+model BannedIdentity {
+  id       String   @id @default(cuid())
+  pubkey   String   @unique
+  username String   @unique
+  reason   String // short machine code, e.g. "prohibited_content"
+  category String // classifier label, e.g. "violence", "csam", "weapons"
+  detail   String? // one-line classifier explanation
+  bannedAt DateTime @default(now())
+
+  @@index([bannedAt])
+}
+
+enum ModerationStatus {
+  PENDING // classifier errored; allowed through, awaiting re-check
+  CLEARED // re-check passed - content is fine
+  ACTIONED // re-check failed - account was banned
+  MANUAL // exhausted automatic retries - needs admin eyes
+}
+
+enum ModerationKind {
+  TASK_POST
+  DECISION_NOTE
+  HUMAN_MESSAGE
+  EVIDENCE_TEXT
+  EVIDENCE_MEDIA // image/video - classifier cannot inspect; admin must view
+  PETITION
+}
+
+enum PetitionStatus {
+  OPEN // gathering support, public
+  QUALIFIED // reached the 51% eligible-voter threshold → submitted to admin
+  CLOSED
+  IMPLEMENTED
+  REJECTED
+}
+
+/// Queue for content that was allowed through because the classifier was
+/// unavailable. The worker re-screens these; the admin dashboard surfaces
+/// anything still pending or escalated to MANUAL.
+model ModerationReview {
+  id        String           @id @default(cuid())
+  userId    String? // poster (null if the account is already gone)
+  pubkey    String
+  username  String
+  kind      ModerationKind
+  targetId  String? // taskId / slotId / milestoneId for context
+  content   String // the exact text that was screened
+  status    ModerationStatus @default(PENDING)
+  attempts  Int              @default(0)
+  lastError String?
+  category  String? // classifier label once a verdict lands
+  detail    String?
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  @@index([status, createdAt])
+}
