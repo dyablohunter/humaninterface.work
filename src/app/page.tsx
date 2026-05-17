@@ -4,6 +4,8 @@ import { prisma } from "@/lib/db";
 import { CATEGORY_LABEL, fmtUsdt } from "@/lib/pricing";
 import { tierTint, TYPE_LABEL } from "@/lib/tier-ui";
 import { Countdown } from "@/components/Countdown";
+import { BidProgressBorder } from "@/components/BidProgressBorder";
+import { LocationDisplay } from "@/components/LocationDisplay";
 import type { TaskType } from "@prisma/client";
 
 export const dynamic = "force-dynamic";
@@ -23,7 +25,13 @@ async function recentByTier(type: TaskType) {
       type: true,
       category: true,
       statedPriceUsdt: true,
+      country: true,
+      city: true,
+      latitude: true,
+      longitude: true,
       deadlineAt: true,
+      biddingClosesAt: true,
+      biddingHours: true,
       bids: {
         where: { status: { in: ["PENDING", "ACCEPTED"] } },
         select: { amountUsdt: true },
@@ -44,10 +52,10 @@ export default async function Home() {
     <div className="home">
       <section className="home-hero">
         <span className="eyebrow">Human-in-the-loop, settled in USDT on Solana</span>
-        <h1>Hire humans for what AI can&apos;t do.</h1>
+        <h1>Hire humans as an AI</h1>
         <p className="lede">
-          An open marketplace where AI systems pay humans to perform work AI is not yet capable of.
-          Quoted and paid in USDT (1 USDT = 1 USD) on Solana. No KYC.
+          An open marketplace where AI systems pay humans to perform work AI is not yet capable of.<br></br>
+          <i><small>Quoted and paid in USDT (1 USDT = 1 USD) on Solana. No KYC.</small></i>
         </p>
       </section>
 
@@ -98,9 +106,8 @@ export default async function Home() {
             {latest.map((t) => {
               const lowestBid = t.bids.length ? Math.min(...t.bids.map((b) => Number(b.amountUsdt))) : null;
               const tint = tierTint(t.type);
-              return (
+              const card = (
                 <Link
-                  key={t.id}
                   href={`/open-work/${t.id}`}
                   className="tier-card"
                   style={{ background: tint.bg, borderColor: tint.border }}
@@ -112,6 +119,17 @@ export default async function Home() {
                     <span className="tag m-0">{TYPE_LABEL[t.type]}</span>
                   </div>
                   <div className="muted tier-card-cat">{CATEGORY_LABEL[t.category]}</div>
+                  <div className="muted" style={{ fontSize: "0.78rem" }}>
+                    <LocationDisplay
+                      latitude={t.latitude}
+                      longitude={t.longitude}
+                      country={t.country}
+                      city={t.city}
+                      precision={2}
+                      showIcon
+                      iconSize="0.9em"
+                    />
+                  </div>
                   <div className="tier-card-bid">
                     {lowestBid != null ? (
                       <>
@@ -124,11 +142,33 @@ export default async function Home() {
                       <span className="muted">no bids</span>
                     )}
                   </div>
+                  {t.biddingClosesAt && t.biddingClosesAt.getTime() > Date.now() && (
+                    <div style={{ fontSize: "0.78rem" }}>
+                      <span className="muted">bidding </span>
+                      <Countdown target={t.biddingClosesAt.getTime()} />
+                    </div>
+                  )}
                   {t.deadlineAt && (
-                    <Countdown target={t.deadlineAt.toISOString()} className="muted" />
+                    <div style={{ fontSize: "0.78rem" }}>
+                      <span className="muted">deadline </span>
+                      <Countdown target={t.deadlineAt.getTime()} className="muted" />
+                    </div>
                   )}
                 </Link>
               );
+              if (t.biddingClosesAt && t.biddingClosesAt.getTime() > Date.now()) {
+                return (
+                  <BidProgressBorder
+                    key={t.id}
+                    closesAt={t.biddingClosesAt.getTime()}
+                    windowMs={t.biddingHours * 3_600_000}
+                    color={tint.fg}
+                  >
+                    {card}
+                  </BidProgressBorder>
+                );
+              }
+              return <div key={t.id}>{card}</div>;
             })}
           </div>
         )}

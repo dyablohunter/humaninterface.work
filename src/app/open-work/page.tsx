@@ -1,11 +1,10 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { MapPin } from "lucide-react";
 import { prisma } from "@/lib/db";
-import { CATEGORY_LABEL, fmtUsdt } from "@/lib/pricing";
+import { CATEGORY_LABEL } from "@/lib/pricing";
 import { TaskFilters } from "@/components/TaskFilters";
-import { Countdown } from "@/components/Countdown";
-import { tierTint, urgencyTint, TYPE_LABEL, URGENCY_LABEL } from "@/lib/tier-ui";
+import { ViewToggle } from "@/components/ViewToggle";
+import { InfiniteTaskFeed, type FeedTask } from "@/components/InfiniteTaskFeed";
 import { publicLiveTaskWhere } from "@/lib/tasks";
 import { COUNTRIES, COUNTRY_CODES, countryName, REMOTE_SENTINEL } from "@/lib/countries";
 import type { Category, TaskType, Urgency, Prisma } from "@prisma/client";
@@ -92,6 +91,7 @@ export default async function TasksFeed({
   searchParams,
 }: {
   searchParams: Promise<{
+    status?: string;
     category?: string;
     type?: string;
     urgency?: string;
@@ -99,10 +99,12 @@ export default async function TasksFeed({
     q?: string;
     country?: string;
     city?: string;
+    view?: string;
   }>;
 }) {
   const params = await searchParams;
   const q = params.q?.trim();
+  const view: "grid" | "table" = params.view === "table" ? "table" : "grid";
   // Only public, non-archived, non-expired tasks are browsable; archived
   // (finalized / cancelled / expired) tasks are admin-only.
   const where: Prisma.TaskWhereInput = publicLiveTaskWhere();
@@ -132,14 +134,12 @@ export default async function TasksFeed({
     ];
   }
 
-  const page = Math.max(1, Number(params.page ?? 1));
-  const pageSize = 30;
+  const pageSize = view === "table" ? 50 : 20;
 
   const [tasks, total] = await Promise.all([
     prisma.task.findMany({
       where,
       orderBy: [{ urgency: "desc" }, { createdAt: "desc" }],
-      skip: (page - 1) * pageSize,
       take: pageSize,
       include: {
         poster: { select: { username: true } },
@@ -153,9 +153,47 @@ export default async function TasksFeed({
     prisma.task.count({ where }),
   ]);
 
+  // Serialize Prisma rows to the shape the client component expects (and the API returns).
+  const initialTasks: FeedTask[] = tasks.map((t) => {
+    const bidAmounts = t.bids.map((b) => Number(b.amountUsdt));
+    return {
+      id: t.id,
+      title: t.title,
+      type: t.type,
+      category: t.category,
+      urgency: t.urgency,
+      status: t.status,
+      slotCount: t.slotCount,
+      slotsOpen: t._count.slots,
+      estimatedMinutes: t.estimatedMinutes,
+      statedPriceUsdt: Number(t.statedPriceUsdt),
+      country: t.country,
+      city: t.city,
+      latitude: t.latitude,
+      longitude: t.longitude,
+      biddingClosesAt: t.biddingClosesAt ? t.biddingClosesAt.getTime() : null,
+      poster: t.poster.username,
+      lowestBidUsdt: bidAmounts.length ? Math.min(...bidAmounts) : null,
+      bidCount: bidAmounts.length,
+    };
+  });
+
+  // Query string for the loader to fetch subsequent pages — strip view/page/pageSize.
+  const filterQs = new URLSearchParams();
+  if (params.status) filterQs.set("status", params.status);
+  if (params.category) filterQs.set("category", params.category);
+  if (params.type) filterQs.set("type", params.type);
+  if (params.urgency) filterQs.set("urgency", params.urgency);
+  if (params.country) filterQs.set("country", params.country);
+  if (params.city) filterQs.set("city", params.city);
+  if (q) filterQs.set("q", q);
+
   return (
     <>
-      <h1>Open work</h1>
+      <div className="row" style={{ alignItems: "center", justifyContent: "space-between", marginBottom: "0.25rem" }}>
+        <h1 style={{ margin: 0 }}>Open work</h1>
+        <ViewToggle current={view} />
+      </div>
       <p className="muted">
         {total} item{total === 1 ? "" : "s"}
         {q ? <> matching <strong>{q}</strong></> : " live across all categories"}. Sorted by
@@ -173,96 +211,17 @@ export default async function TasksFeed({
         ]}
       />
 
-      {tasks.length === 0 && <p>No work matches these filters.</p>}
-
-      <div className="work-grid">
-        {tasks.map((t) => {
-          const lowestBid = t.bids.length
-            ? Math.min(...t.bids.map((b) => Number(b.amountUsdt)))
-            : null;
-          const tint = tierTint(t.type);
-          return (
-            <Link
-              key={t.id}
-              href={`/open-work/${t.id}`}
-              className="card work-card"
-              style={{ borderColor: tint.border }}
-            >
-              {/* Column 1 - colored price panel, flush to card edges */}
-              <div
-                className="work-card-price"
-                style={{
-                  background: tint.bg,
-                  borderRight: `1px solid ${tint.border}`,
-                }}
-              >
-                <div style={{ fontSize: "1.3rem", fontWeight: 700, lineHeight: 1.1, color: tint.fg }}>
-                  {fmtUsdt(Number(t.statedPriceUsdt))} USDT
-                </div>
-                {lowestBid != null ? (
-                  <div style={{ fontSize: "0.9rem", fontWeight: 600, lineHeight: 1.2, color: tint.fg }}>
-                    {fmtUsdt(lowestBid)} USDT
-                    <span className="muted" style={{ fontSize: "0.72rem", fontWeight: 500, display: "block" }}>
-                      lowest bid · {t.bids.length} bid{t.bids.length === 1 ? "" : "s"}
-                    </span>
-                  </div>
-                ) : (
-                  <div className="muted" style={{ fontSize: "0.72rem" }}>no bids yet</div>
-                )}
-              </div>
-
-              {/* Column 2 - everything else, vertically centered */}
-              <div className="work-card-body">
-                <h3 style={{ marginTop: 0, marginBottom: "0.4rem", color: tint.fg }}>{t.title}</h3>
-                <div className="card-tags">
-                  <span className="tag">{TYPE_LABEL[t.type]}</span>
-                  <span
-                    className="tag"
-                    style={{ color: urgencyTint(t.urgency), borderColor: urgencyTint(t.urgency) }}
-                  >
-                    {URGENCY_LABEL[t.urgency]}
-                  </span>
-                  <span className="tag">{CATEGORY_LABEL[t.category]}</span>
-                  <span className="tag">{t.estimatedMinutes} min</span>
-                  {t.status === "FAIRNESS_FLAGGED" && <span className="tag">Fairness flagged</span>}
-                  {t.status === "PAUSED" && <span className="tag">Paused</span>}
-                  <span
-                    className="tag"
-                    style={{ display: "inline-flex", alignItems: "center", gap: "0.3em" }}
-                  >
-                    <MapPin size="0.9em" aria-hidden />
-                    {t.country ? (t.city ? `${t.city}, ${t.country}` : t.country) : "Remote"}
-                  </span>
-                </div>
-                <p className="muted" style={{ marginBottom: 0, fontSize: "0.7rem" }}>
-                  {t._count.slots} open of {t.slotCount} slot{t.slotCount === 1 ? "" : "s"} · posted by{" "}
-                  <code>{t.poster.username}</code>
-                  {t.deadlineAt && (
-                    <>
-                      {" · "}
-                      <Countdown
-                        target={new Date(t.deadlineAt).toISOString()}
-                        className="cd-bold"
-                      />
-                    </>
-                  )}
-                </p>
-              </div>
-            </Link>
-          );
-        })}
-      </div>
-
-      {total > pageSize && (
-        <p style={{ marginTop: "1.5rem" }}>
-          {page > 1 && (
-            <Link href={{ pathname: "/open-work", query: { ...params, page: page - 1 } }}>← Previous</Link>
-          )}
-          {" · "}Page {page} of {Math.ceil(total / pageSize)}{" · "}
-          {page * pageSize < total && (
-            <Link href={{ pathname: "/open-work", query: { ...params, page: page + 1 } }}>Next →</Link>
-          )}
-        </p>
+      {initialTasks.length === 0 ? (
+        <p>No work matches these filters.</p>
+      ) : (
+        <InfiniteTaskFeed
+          key={`${view}|${filterQs.toString()}`}
+          initialTasks={initialTasks}
+          total={total}
+          pageSize={pageSize}
+          view={view}
+          queryString={filterQs.toString()}
+        />
       )}
     </>
   );

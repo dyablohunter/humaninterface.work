@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { Category } from "@prisma/client";
 import { usernameSchema } from "./validation";
 import { MIN_PRICE_USDT } from "./pricing";
 import { isValidCountryCode } from "./countries";
@@ -17,46 +18,45 @@ export const countryCodeSchema = z
 /** Free-text city, trimmed, max 80 chars. Empty → null. */
 export const citySchema = z.string().trim().min(1).max(80);
 
-export const categoryEnum = z.enum([
-  // Medical & life-critical
-  "MICROSURGERY", "SURGERY_GENERAL", "DENTAL_PROCEDURES", "EMERGENCY_MEDICAL",
-  // Skilled trades
-  "PLUMBING", "ELECTRICAL", "HVAC", "CARPENTRY", "AUTO_MECHANIC", "WELDING_FABRICATION", "LOCKSMITHING", "APPLIANCE_REPAIR",
-  // Fine craft
-  "TAILORING", "JEWELRY_AND_WATCH", "POTTERY_CERAMICS",
-  // Vehicles & heavy machinery
-  "CDL_DRIVING", "HEAVY_EQUIPMENT", "AIRCRAFT_PILOTING", "MARINE_OPERATION", "DRONE_COMMERCIAL",
-  // Performing arts
-  "MUSICAL_INSTRUMENT", "VOCAL_PERFORMANCE", "ACTING_PERFORMANCE",
-  // Visual arts & design
-  "ILLUSTRATION", "PHOTOGRAPHY", "GRAPHIC_DESIGN", "UX_UI_DESIGN",
-  // Writing & language
-  "FICTION_WRITING", "COPYWRITING", "TECHNICAL_WRITING", "TRANSLATION_RARE_LANGUAGE",
-  // Culinary & sensory
-  "PROFESSIONAL_COOKING", "BARTENDING", "WINE_SOMMELIER", "COFFEE_BARISTA",
-  // Care & companionship
-  "CHILDCARE", "ELDERCARE", "HOSPICE_PRESENCE", "PET_CARE",
-  // Education & coaching
-  "ACADEMIC_TUTORING", "LANGUAGE_TUTORING", "CONVERSATION_PARTNER",
-  // Mental health
-  "LICENSED_THERAPY", "PEER_SUPPORT", "EXECUTIVE_COACHING",
-  // Legal & ethical
-  "LEGAL_ADVICE", "NOTARY_WITNESS", "COMPLIANCE_REVIEW",
-  // Social leadership
-  "PUBLIC_SPEAKING", "SALES_NEGOTIATION", "EVENT_HOSTING",
-  // Courage & high-risk
-  "PRIVATE_SECURITY", "WILDLAND_FIREFIGHTING", "WILDERNESS_SAR", "STUNT_PERFORMANCE",
-  // Ritual & ceremonial
-  "WEDDING_OFFICIATION", "FUNERAL_OFFICIATION", "COURT_TESTIMONY",
-  // Strategic
-  "CRISIS_CONSULTING", "INVESTIGATIVE_RESEARCH", "FORECASTING_ANALYSIS",
-  // Living-systems & fieldcraft
-  "LIVESTOCK_HANDLING", "WORKING_DOG_TRAINING", "BEEKEEPING", "FORAGING_MYCOLOGY", "COMMERCIAL_FISHING", "ARBORIST_TREE_CLIMBING",
-  // Body & wellness
-  "MASSAGE_THERAPY", "TATTOO_ARTISTRY", "HAIRSTYLING",
-  // High-availability (micro-task)
-  "LOCAL_OBSERVATION", "PHOTO_VERIFICATION", "AUDIO_TRANSCRIPTION", "DATA_LABELING", "DELIVERY_RUNNER",
-]);
+/**
+ * Decimal-degree latitude/longitude. Both required together; the parent
+ * schema's `.refine()` enforces the pair-or-null rule. Empty / undefined / null
+ * normalise to null.
+ */
+export const latitudeSchema = z
+  .number()
+  .min(-90)
+  .max(90)
+  .nullable()
+  .optional()
+  .transform((v) => v ?? null);
+
+export const longitudeSchema = z
+  .number()
+  .min(-180)
+  .max(180)
+  .nullable()
+  .optional()
+  .transform((v) => v ?? null);
+
+/**
+ * Helper for shared use by create/update endpoints: enforces the pair-or-null
+ * rule on an object that already has `latitude` and `longitude` keys.
+ */
+export function coordinatesPaired(v: {
+  latitude?: number | null;
+  longitude?: number | null;
+}): boolean {
+  const latSet = v.latitude !== null && v.latitude !== undefined;
+  const lngSet = v.longitude !== null && v.longitude !== undefined;
+  return latSet === lngSet;
+}
+
+/**
+ * Bound to the Prisma `Category` enum so it auto-stays in sync as new
+ * categories are added to schema.prisma — no risk of validation drift.
+ */
+export const categoryEnum = z.nativeEnum(Category);
 
 export const urgencyEnum = z.enum(["LOW", "NORMAL", "URGENT", "CRITICAL"]);
 export const privacyEnum = z.enum(["PUBLIC", "PRIVATE"]);
@@ -70,7 +70,7 @@ export const taskTypeEnum = z.enum(["MICRO", "TASK", "JOB"]);
  *   statedPriceUsdt    - the AI's maximum per-slot price (USDT). Escrowed upfront.
  *   instantAcceptUsdt  - any qualifying bid ≤ this is auto-accepted.
  *   minReputation      - optional eligibility gate, 0–1.
- *   deadlineAt         - optional deadline for the work itself (ISO 8601).
+ *   deadlineAt         - optional deadline for the work itself (Unix ms).
  *   category           - taxonomy reference + eligibility gate (informational
  *                        for pay; humans must self-declare it to bid).
  */
@@ -87,7 +87,26 @@ export const createTaskSchema = z
     statedPriceUsdt: z.number().min(MIN_PRICE_USDT).max(1_000_000),
     instantAcceptUsdt: z.number().min(MIN_PRICE_USDT).max(1_000_000),
     minReputation: z.number().min(0).max(1).optional(),
-    deadlineAt: z.coerce.date().optional(),
+    /**
+     * Reverse-auction bidding window length in hours. The AI chooses 24 or 48.
+     * The clock starts at `fundedAt`; when it elapses, the worker auto-accepts
+     * the lowest qualifying bid per still-OPEN slot.
+     */
+    biddingHours: z
+      .number()
+      .int()
+      .refine((n) => n === 24 || n === 48, { message: "must_be_24_or_48" }),
+    /**
+     * Optional deadline as Unix milliseconds (number). Server converts to
+     * Date before persisting. ISO 8601 strings are intentionally not accepted
+     * here — every wire boundary in this API uses Unix ms.
+     */
+    deadlineAt: z
+      .number()
+      .int()
+      .min(0)
+      .optional()
+      .transform((ms) => (ms === undefined ? undefined : new Date(ms))),
     invitedUsername: usernameSchema.optional(),
     country: countryCodeSchema
       .nullable()
@@ -97,6 +116,8 @@ export const createTaskSchema = z
       .nullable()
       .optional()
       .transform((v) => (v ? v : null)),
+    latitude: latitudeSchema,
+    longitude: longitudeSchema,
   })
   .refine(
     (v) => (v.privacy === "PRIVATE" ? !!v.invitedUsername : true),
@@ -109,6 +130,10 @@ export const createTaskSchema = z
   .refine((v) => !v.deadlineAt || v.deadlineAt.getTime() > Date.now(), {
     message: "deadline_must_be_in_the_future",
     path: ["deadlineAt"],
+  })
+  .refine(coordinatesPaired, {
+    message: "latitude_and_longitude_must_be_paired",
+    path: ["longitude"],
   });
 
 export const createMilestoneSchema = z.object({

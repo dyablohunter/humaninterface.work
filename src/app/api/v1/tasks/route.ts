@@ -20,6 +20,7 @@ const listQuerySchema = z.object({
   category: categoryEnum.optional(),
   type: taskTypeEnum.optional(),
   page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(50).default(20),
   /**
    * ISO 3166-1 alpha-2 country code (case-insensitive on input, uppercased)
    * or the sentinel "REMOTE" to filter for tasks with no country set.
@@ -107,6 +108,8 @@ export async function POST(req: NextRequest) {
   // City without a country is meaningless for filtering, so drop it.
   const country = input.country ?? null;
   const city = country ? (input.city ?? null) : null;
+  const latitude = input.latitude ?? null;
+  const longitude = input.longitude ?? null;
 
   const task = await prisma.$transaction(async (tx) => {
     const created = await tx.task.create({
@@ -129,7 +132,12 @@ export async function POST(req: NextRequest) {
         invitedHumanId,
         country,
         city,
+        latitude,
+        longitude,
         expiresAt,
+        biddingHours: input.biddingHours,
+        // biddingClosesAt is null until the task is funded; the confirm-deposit
+        // / tx-poller paths set it to (fundedAt + biddingHours).
       },
     });
     await tx.slot.createMany({
@@ -155,15 +163,17 @@ export async function POST(req: NextRequest) {
       statedPriceUsdt: input.statedPriceUsdt,
       instantAcceptUsdt: input.instantAcceptUsdt,
       minReputation: input.minReputation ?? null,
-      deadlineAt: input.deadlineAt ? input.deadlineAt.toISOString() : null,
+      deadlineAt: input.deadlineAt ? input.deadlineAt.getTime() : null,
     },
+    biddingHours: input.biddingHours,
+    biddingClosesAt: null,
     quote: {
       perSlotUsdt: quote.perSlotUsdt,
       totalBaseUsdt: quote.totalBaseUsdt,
       feeUsdt: quote.feeUsdt,
       totalUsdt: quote.totalUsdt,
     },
-    expiresAt: expiresAt.toISOString(),
+    expiresAt: expiresAt.getTime(),
   });
 }
 
@@ -174,6 +184,7 @@ export async function GET(req: NextRequest) {
     category: url.searchParams.get("category") ?? undefined,
     type: url.searchParams.get("type") ?? undefined,
     page: url.searchParams.get("page") ?? undefined,
+    pageSize: url.searchParams.get("pageSize") ?? undefined,
     country: url.searchParams.get("country") ?? undefined,
     city: url.searchParams.get("city") ?? undefined,
   });
@@ -183,8 +194,7 @@ export async function GET(req: NextRequest) {
       { status: 400 },
     );
   }
-  const { status, category, type, page, country, city } = parsed.data;
-  const pageSize = 50;
+  const { status, category, type, page, pageSize, country, city } = parsed.data;
 
   const where: Prisma.TaskWhereInput = {
     privacy: "PUBLIC",
@@ -205,38 +215,52 @@ export async function GET(req: NextRequest) {
   const [tasks, total] = await Promise.all([
     prisma.task.findMany({
       where,
-      orderBy: { createdAt: "desc" },
+      orderBy: [{ urgency: "desc" }, { createdAt: "desc" }],
       skip: (page - 1) * pageSize,
       take: pageSize,
       include: {
         poster: { select: { username: true } },
-        _count: { select: { slots: true, reports: true } },
+        _count: { select: { slots: { where: { status: "OPEN" } }, reports: true } },
+        bids: {
+          where: { status: { in: ["PENDING", "ACCEPTED"] } },
+          select: { amountUsdt: true },
+        },
       },
     }),
     prisma.task.count({ where }),
   ]);
 
   return NextResponse.json({
-    tasks: tasks.map((t) => ({
-      id: t.id,
-      type: t.type,
-      title: t.title,
-      category: t.category,
-      urgency: t.urgency,
-      privacy: t.privacy,
-      slotCount: t.slotCount,
-      estimatedMinutes: t.estimatedMinutes,
-      statedPriceUsdt: Number(t.statedPriceUsdt),
-      minReputation: t.minReputation,
-      deadlineAt: t.deadlineAt ? t.deadlineAt.toISOString() : null,
-      totalUsdt: Number(t.totalUsdt),
-      status: t.status,
-      country: t.country,
-      city: t.city,
-      poster: t.poster.username,
-      reports: t._count.reports,
-      createdAt: t.createdAt.toISOString(),
-    })),
+    tasks: tasks.map((t) => {
+      const bidAmounts = t.bids.map((b) => Number(b.amountUsdt));
+      return {
+        id: t.id,
+        type: t.type,
+        title: t.title,
+        category: t.category,
+        urgency: t.urgency,
+        privacy: t.privacy,
+        slotCount: t.slotCount,
+        slotsOpen: t._count.slots,
+        estimatedMinutes: t.estimatedMinutes,
+        statedPriceUsdt: Number(t.statedPriceUsdt),
+        minReputation: t.minReputation,
+        deadlineAt: t.deadlineAt ? t.deadlineAt.getTime() : null,
+        biddingHours: t.biddingHours,
+        biddingClosesAt: t.biddingClosesAt ? t.biddingClosesAt.getTime() : null,
+        totalUsdt: Number(t.totalUsdt),
+        status: t.status,
+        country: t.country,
+        city: t.city,
+        latitude: t.latitude,
+        longitude: t.longitude,
+        poster: t.poster.username,
+        reports: t._count.reports,
+        lowestBidUsdt: bidAmounts.length ? Math.min(...bidAmounts) : null,
+        bidCount: bidAmounts.length,
+        createdAt: t.createdAt.getTime(),
+      };
+    }),
     page,
     pageSize,
     total,

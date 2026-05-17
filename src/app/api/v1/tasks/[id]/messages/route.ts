@@ -63,7 +63,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       id: created.id,
       senderRole: created.senderRole,
       body: created.body,
-      createdAt: created.createdAt.toISOString(),
+      createdAt: created.createdAt.getTime(),
       mine: true,
     },
   });
@@ -121,7 +121,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
       id: m.id,
       senderRole: m.senderRole,
       body: m.body,
-      createdAt: m.createdAt.toISOString(),
+      createdAt: m.createdAt.getTime(),
       mine: m.senderRole === auth.role,
     })),
   });

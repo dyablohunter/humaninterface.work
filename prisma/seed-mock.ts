@@ -195,6 +195,13 @@ async function main() {
           fundedAt: new Date(),
           escrowTxSig: `MOCK_SEED_TX_${type}_${created}`,
           expiresAt: new Date(Date.now() + 30 * 86_400_000),
+          // Alternate 24h / 48h bidding windows across seeded tasks so the
+          // /open-work feed shows a mix. Seeded tasks are funded ("OPEN"), so
+          // biddingClosesAt is set to (now + biddingHours).
+          biddingHours: created % 2 === 0 ? 24 : 48,
+          biddingClosesAt: new Date(
+            Date.now() + (created % 2 === 0 ? 24 : 48) * 3_600_000,
+          ),
           slots: {
             create: Array.from({ length: s.slotCount }, () => ({ status: "OPEN" as const })),
           },

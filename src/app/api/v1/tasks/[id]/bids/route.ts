@@ -38,7 +38,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
       const p = b.human.humanProfile;
       const rep = p
         ? computeReputation(p)
-        : { score: null, paid: 0, rejected: 0, microPaid: 0, taskPaid: 0, jobPaid: 0 };
+        : { score: 1, paid: 0, rejected: 0, microPaid: 0, taskPaid: 0, jobPaid: 0 };
       return {
         bidId: b.id,
         username: b.human.username,
@@ -49,7 +49,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
         reputation: rep.score,
         completed: rep.paid,
         rejected: rep.rejected,
-        createdAt: b.createdAt.toISOString(),
+        createdAt: b.createdAt.getTime(),
       };
     }),
   });

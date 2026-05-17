@@ -45,6 +45,11 @@ async function createTestTask(opts: {
       fundedAt: (opts.status ?? "OPEN") === "OPEN" ? now : null,
       deadlineAt: opts.deadlineAt ?? null,
       expiresAt: new Date(now.getTime() + 30 * 24 * 3_600_000),
+      biddingHours: 24,
+      biddingClosesAt:
+        (opts.status ?? "OPEN") === "OPEN"
+          ? new Date(now.getTime() + 24 * 3_600_000)
+          : null,
       slots: { create: Array.from({ length: opts.slotCount ?? 1 }, () => ({ status: "OPEN" as const })) },
     },
     select: { id: true, status: true },
@@ -94,21 +99,30 @@ export async function POST(req: NextRequest) {
     await step("back-date deadline to 1m ago", async () => {
       const at = new Date(Date.now() - 60_000);
       await prisma.task.update({ where: { id: task.id }, data: { deadlineAt: at } });
-      return { deadlineAt: at };
+      return { deadlineAt: at.getTime() };
     });
 
     const processed = await step("run purgeStale()", () => purgeStale());
 
-    const after = await step("read task + slots after sweep", async () =>
-      prisma.task.findUnique({
+    const after = await step("read task + slots after sweep", async () => {
+      const row = await prisma.task.findUnique({
         where: { id: task.id },
         select: {
           id: true,
           status: true,
           slots: { select: { id: true, status: true, decidedAt: true } },
         },
-      }),
-    );
+      });
+      if (!row) return null;
+      return {
+        ...row,
+        slots: row.slots.map((s) => ({
+          ...s,
+          // Unix ms on the wire (admin transcript output).
+          decidedAt: s.decidedAt ? s.decidedAt.getTime() : null,
+        })),
+      };
+    });
 
     return NextResponse.json({
       ok: transcript.every((s) => s.ok),

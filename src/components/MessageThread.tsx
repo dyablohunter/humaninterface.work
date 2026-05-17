@@ -1,12 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { FormattedDateTime } from "@/components/time/FormattedDateTime";
 
 interface Msg {
   id: string;
   senderRole: "HUMAN" | "AI";
   body: string;
-  createdAt: string;
+  /** Unix milliseconds. */
+  createdAt: number;
   mine: boolean;
 }
 
@@ -87,7 +89,7 @@ export function MessageThread({ taskId, taskTitle }: { taskId: string; taskTitle
         {messages.map((m) => (
           <div key={m.id} className={m.mine ? "message-bubble mine" : "message-bubble"}>
             <p className="muted text-xs message-meta">
-              {m.mine ? "You" : "AI"} · {new Date(m.createdAt).toLocaleString()}
+              {m.mine ? "You" : "AI"} · <FormattedDateTime ts={m.createdAt} />
             </p>
             <div className="card message-body">{m.body}</div>
           </div>

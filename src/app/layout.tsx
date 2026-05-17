@@ -1,11 +1,16 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import Script from "next/script";
+import { headers } from "next/headers";
 import { Providers } from "./providers";
 import { Heartbeat } from "@/components/Heartbeat";
 import { SiteNav } from "@/components/SiteNav";
 import { MobileFiltersProvider } from "@/components/MobileFilters";
+import { TimezoneProvider } from "@/components/time/TimezoneProvider";
 import { getSession } from "@/lib/auth/session";
 import { prisma } from "@/lib/db";
+import { extractClientIp, ipToCountry } from "@/lib/geo";
+import { countryToTimezone } from "@/lib/timezones";
 import "./globals.css";
 
 const SITE_URL = process.env.APP_BASE_URL || "https://humaninterface.work";
@@ -87,20 +92,29 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       })
     : null;
 
+  // IP-derived timezone. We read the originating IP from forwarded headers,
+  // resolve it to an ISO country code via the embedded GeoLite2 DB, then map
+  // the country to a sensible default IANA zone. The IP is never persisted.
+  // Localhost / unrecognised IPs fall through to UTC, and a DEV_TZ_OVERRIDE
+  // env var lets a developer pin a specific zone for local simulation.
+  const hdrs = await headers();
+  const devOverride = process.env.DEV_TZ_OVERRIDE;
+  const detectedTz = devOverride
+    ? devOverride
+    : countryToTimezone(ipToCountry(extractClientIp(hdrs)));
+
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
-        {/* Apply the stored / preferred theme before first paint to avoid FOUC. */}
-        <script
-          dangerouslySetInnerHTML={{
-            __html:
-              "(function(){try{var s=localStorage.getItem('theme');" +
-              "if(s==='light'||s==='dark'){document.documentElement.dataset.theme=s;}}catch(e){}})();",
-          }}
-        />
+        {/* Apply the stored / preferred theme before first paint to avoid FOUC.
+            Uses next/script with beforeInteractive — React 19 warns on raw <script> in JSX. */}
+        <Script id="theme-bootstrap" strategy="beforeInteractive">
+          {`(function(){try{var s=localStorage.getItem('theme');if(s==='light'||s==='dark'){document.documentElement.dataset.theme=s;}}catch(e){}})();`}
+        </Script>
       </head>
       <body suppressHydrationWarning>
         <Providers>
+          <TimezoneProvider timezone={detectedTz}>
           <MobileFiltersProvider>
           <header className="site-header">
             <div className="site-header-inner">
@@ -123,11 +137,19 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                 <Link href="/petitions">Petitions</Link>
                 <Link href="/suggest">Suggestions</Link>
                 <Link href="/tos">Terms</Link>
+                <a
+                  href="https://github.com/dyablohunter/humaninterface.work"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  GitHub
+                </a>
               </span>
             </footer>
           </main>
           <Heartbeat />
           </MobileFiltersProvider>
+          </TimezoneProvider>
         </Providers>
       </body>
     </html>

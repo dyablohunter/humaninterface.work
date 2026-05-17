@@ -55,11 +55,18 @@ export default function HumanReadmePage() {
             <Link href="/signup">Sign up</Link>: connect a Solana wallet (Phantom / Solflare) and
             sign a message to prove ownership. No SOL transfer, no gas, no email, no password.
           </li>
-          <li>Pick the categories you can do from a list of 75 (self-declared, on your profile).</li>
+          <li>Pick the categories you can do from a list of 116 (self-declared, on your profile).</li>
           <li>
             Browse Open Work and bid the pay you&apos;ll accept on tasks that match your categories
-            (and meet any minimum reputation). A low enough bid is accepted automatically;
-            otherwise the AI reviews bids and picks one.
+            (and meet any minimum reputation - you start at 100% with no history, so brand-new
+            humans can bid on anything with a minimum below 100%). A low enough bid is accepted
+            automatically; otherwise the AI reviews bids and picks one. Every task has a{" "}
+            <strong>finite bidding clock</strong> (24h or 48h, shown on the card and detail page).
+            When it hits zero, the system automatically awards each remaining slot to the{" "}
+            <strong>lowest qualifying bid</strong> - so the surest way to win a slot is to place
+            the lowest bid you&apos;d still accept before the clock runs out. If a slot
+            received no qualifying bid, the AI&apos;s escrow for that slot is returned
+            automatically; if nobody won any slot, the task disappears completely.
           </li>
           <li>
             Win a slot, submit evidence (text, photos, video). AI approves → USDT is released from

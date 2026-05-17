@@ -5,7 +5,14 @@ import { prisma } from "@/lib/db";
 import { requireAdmin } from "@/lib/auth/middleware";
 import { checkSameOrigin } from "@/lib/auth/csrf";
 import { ensureTestAiUser } from "@/lib/test-ai";
-import { categoryEnum, countryCodeSchema, citySchema } from "@/lib/validation-tasks";
+import {
+  categoryEnum,
+  countryCodeSchema,
+  citySchema,
+  latitudeSchema,
+  longitudeSchema,
+  coordinatesPaired,
+} from "@/lib/validation-tasks";
 
 const schema = z.object({
   posterUsername: z.string().min(3).max(30).optional(), // defaults to test AI
@@ -22,6 +29,11 @@ const schema = z.object({
   minReputation: z.number().min(0).max(1).optional(),
   deadlineHours: z.number().min(0).max(24 * 365).optional(),
   status: z.enum(["OPEN", "PENDING_DEPOSIT"]).optional(),
+  biddingHours: z
+    .number()
+    .int()
+    .refine((n) => n === 24 || n === 48, { message: "must_be_24_or_48" })
+    .optional(),
   country: countryCodeSchema
     .nullable()
     .optional()
@@ -30,6 +42,11 @@ const schema = z.object({
     .nullable()
     .optional()
     .transform((v) => (v ? v : null)),
+  latitude: latitudeSchema,
+  longitude: longitudeSchema,
+}).refine(coordinatesPaired, {
+  message: "latitude_and_longitude_must_be_paired",
+  path: ["longitude"],
 });
 
 /**
@@ -78,9 +95,22 @@ export async function POST(req: NextRequest) {
     posterId = u.id;
     posterUsername = u.username;
   } else {
-    const t = await ensureTestAiUser();
-    posterId = t.id;
-    posterUsername = t.username;
+    try {
+      const t = await ensureTestAiUser();
+      posterId = t.id;
+      posterUsername = t.username;
+    } catch (err) {
+      return NextResponse.json(
+        {
+          error: "test_ai_not_configured",
+          detail:
+            err instanceof Error
+              ? err.message
+              : "set TEST_AI_USERNAME / TEST_AI_PUBKEY / TEST_AI_SECRET_KEY in .env",
+        },
+        { status: 500 },
+      );
+    }
   }
 
   const now = new Date();
@@ -90,8 +120,13 @@ export async function POST(req: NextRequest) {
     ? new Date(now.getTime() + d.deadlineHours * 3_600_000)
     : null;
   const expiresAt = new Date(now.getTime() + 30 * 24 * 3_600_000); // 30d window for tests
+  const biddingHours = d.biddingHours ?? 24;
+  const biddingClosesAt =
+    status === "OPEN" ? new Date(now.getTime() + biddingHours * 3_600_000) : null;
 
-  const created = await prisma.task.create({
+  let created;
+  try {
+    created = await prisma.task.create({
     data: {
       posterId,
       type: d.type,
@@ -107,18 +142,28 @@ export async function POST(req: NextRequest) {
       minReputation: d.minReputation ?? null,
       country: d.country,
       city: d.country ? d.city : null,
+      latitude: d.latitude,
+      longitude: d.longitude,
       deadlineAt,
       totalUsdt: new Prisma.Decimal(totalUsdt.toFixed(6)),
       escrowTxSig: status === "OPEN" ? `test-${Date.now()}` : null,
       status,
       fundedAt: status === "OPEN" ? now : null,
       expiresAt,
+      biddingHours,
+      biddingClosesAt,
       slots: {
         create: Array.from({ length: d.slotCount }, () => ({ status: "OPEN" as const })),
       },
     },
     select: { id: true, status: true, slotCount: true },
   });
+  } catch (err) {
+    return NextResponse.json(
+      { error: "create_failed", detail: err instanceof Error ? err.message : String(err) },
+      { status: 500 },
+    );
+  }
 
   return NextResponse.json({
     ok: true,

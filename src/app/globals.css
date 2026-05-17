@@ -202,9 +202,6 @@ body { padding-top: var(--header-h); }
   border-bottom: 1px solid var(--fg);
   margin: 0;
   padding: 0;
-  /* Stop the baseline short of the panel's rounded top-right corner so it
-     doesn't trail across the curve. */
-  width: calc(100% - var(--radius-sm));
 }
 .tab {
   background: var(--bg);
@@ -258,8 +255,6 @@ body { padding-top: var(--header-h); }
   border: 1px solid var(--fg);
   border-top: none;
   padding: 1.25rem 1.25rem 1rem;
-  /* Top-left is hidden behind the first tab; top-right is exposed so round it. */
-  border-radius: 0 var(--radius-sm) var(--radius-sm) var(--radius-sm);
 }
 .tabpanel[hidden] { display: none; }
 .tabpanel > *:first-child { margin-top: 0; }
@@ -711,6 +706,47 @@ a.btn-primary:hover, .btn.btn-primary:hover {
   .grid-5 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
+/* Animated bidding-progress ring around each homepage card. The conic
+   gradient's stop angle drains from 360° (full window) to 0° (closed).
+   The mask carves out the inner area so only a 2px ring is painted —
+   the card's own background and content are untouched. */
+@property --bid-angle {
+  syntax: "<angle>";
+  inherits: true;
+  initial-value: 360deg;
+}
+.bid-progress {
+  position: relative;
+  display: block;
+  border-radius: var(--radius);
+}
+.bid-progress > .tier-card {
+  position: relative;
+  z-index: 1;
+}
+.bid-progress::before {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  border-radius: calc(var(--radius) + 2px);
+  padding: 2px;
+  background: conic-gradient(
+    var(--bid-color, var(--accent)) 0deg,
+    var(--bid-color, var(--accent)) var(--bid-angle, 360deg),
+    var(--border) var(--bid-angle, 360deg) 360deg
+  );
+  transition: --bid-angle 5s linear;
+  /* Mask: full element minus content-box leaves only the 2px ring. */
+  -webkit-mask: linear-gradient(#000 0 0) content-box,
+                linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box,
+        linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  pointer-events: none;
+  z-index: 2;
+}
+
 .tier-card {
   display: flex;
   flex-direction: column;
@@ -874,7 +910,7 @@ th { font-weight: 600; color: var(--fg-soft); font-size: 0.85rem; text-transform
 /* Open-work filters - responsive grid */
 .task-filters {
   display: grid;
-  grid-template-columns: 2fr 1fr 1fr 1fr;
+  grid-template-columns: 2fr 1fr 1fr 1fr 1fr 1fr;
   gap: 1rem;
 }
 .task-filters label {
@@ -890,6 +926,111 @@ th { font-weight: 600; color: var(--fg-soft); font-size: 0.85rem; text-transform
 @media (max-width: 480px) {
   .task-filters { grid-template-columns: 1fr; }
 }
+
+/* Username "tag" links: <a><code>name</code></a>. The browser underlines the
+   anchor by default; we render these as code-styled badges, so strip the
+   underline globally everywhere this pattern appears. */
+a:has(> code) { text-decoration: none; }
+a:has(> code):hover { text-decoration: none; }
+
+/* Task detail stats. Desktop: each stat is its own column (label above value),
+   laid out as a horizontal table-like row. Mobile: collapse to a single
+   dt/dd grid, one stat per row. */
+.task-stats {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 1rem 1.5rem;
+  margin: 0;
+  font-size: 0.95rem;
+}
+.task-stats .stat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: 0;
+}
+.task-stats dt {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35em;
+  font-size: 0.82rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.task-stats dd { margin: 0; }
+@media (max-width: 720px) {
+  .task-stats {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    column-gap: 1.25rem;
+    row-gap: 0.55rem;
+  }
+  /* `display: contents` removes the .stat wrapper from the layout tree so
+     its dt/dd become direct grid items of the parent. */
+  .task-stats .stat { display: contents; }
+  .task-stats dt {
+    font-size: 0.95rem;
+    text-transform: none;
+    letter-spacing: normal;
+  }
+}
+
+/* Open-work view toggle (grid / table) */
+.view-toggle {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: var(--surface);
+}
+.view-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.7rem;
+  font: inherit;
+  font-size: 0.85rem;
+  color: var(--muted);
+  background: transparent;
+  border: none;
+  border-right: 1px solid var(--border);
+  border-radius: 0;
+  cursor: pointer;
+}
+.view-toggle-btn:last-child { border-right: none; }
+.view-toggle-btn:hover { color: var(--fg); background: var(--bg); }
+.view-toggle-btn.active {
+  background: var(--fg);
+  color: var(--accent-fg);
+}
+.view-toggle-btn.active:hover {
+  background: var(--fg);
+  color: var(--accent-fg);
+  cursor: default;
+}
+
+/* Open-work table view */
+.work-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+}
+.work-table thead th {
+  text-align: left;
+  font-weight: 600;
+  padding: 0.5rem 0.6rem;
+  border-bottom: 1px solid var(--fg);
+  color: var(--fg);
+  white-space: nowrap;
+}
+.work-table tbody td {
+  padding: 0.55rem 0.6rem;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+.work-table tbody tr:hover { background: var(--bg); }
+.work-table a { text-decoration: none; font-weight: 500; }
+.work-table a:hover { text-decoration: underline; }
 
 /* Open-work cards */
 .work-card {
@@ -1194,7 +1335,7 @@ hr { border: none; border-top: 1px solid var(--border); margin: 1.5rem 0; }
   margin-top: 0.5rem;
 }
 
-/* Stat-card grid used at the top of /admin. */
+/* Stat-card grid used at the top of /admin and on public profile pages. */
 .stats-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(8.5rem, 1fr));
@@ -1203,7 +1344,23 @@ hr { border: none; border-top: 1px solid var(--border); margin: 1.5rem 0; }
 }
 .stat-card { margin: 0; }
 .stat-card .value { font-size: 1.6rem; font-weight: 600; }
-.stat-card .label { color: var(--muted); font-size: 0.85em; }
+.stat-card .label {
+  color: var(--muted);
+  font-size: 0.78em;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 600;
+}
+
+/* Public profile / stats - per-card grid wants wider cards (180px min). */
+.stats-grid--profile {
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 1rem;
+}
+@media (max-width: 480px) {
+  .stats-grid,
+  .stats-grid--profile { grid-template-columns: 1fr; }
+}
 
 /* Small "Delete" / inline action button used in admin tables. */
 .btn-mini {

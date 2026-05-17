@@ -9,7 +9,8 @@ interface MySlot {
   id: string;
   status: string;
   rejectionReason: string | null;
-  decidedAt: string | null;
+  /** Unix milliseconds. */
+  decidedAt: number | null;
   hasDispute: boolean;
 }
 

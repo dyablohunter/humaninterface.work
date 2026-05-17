@@ -4,7 +4,8 @@ interface EvidenceItem {
   id: string;
   type: "TEXT" | "IMAGE" | "VIDEO";
   bodyText: string | null;
-  transcodedAt: string | null;
+  /** Unix milliseconds. */
+  transcodedAt: number | null;
   mimePrimary: string | null;
   mimeFallback: string | null;
   width: number | null;

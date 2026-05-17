@@ -24,7 +24,7 @@ export async function GET(req: NextRequest) {
     suggestions: suggestions.map((s) => ({
       id: s.id,
       body: s.body,
-      createdAt: s.createdAt.toISOString(),
+      createdAt: s.createdAt.getTime(),
       user: s.user,
     })),
     page,

@@ -26,7 +26,7 @@ export async function GET(req: NextRequest) {
       email: m.email,
       body: m.body,
       userId: m.userId,
-      createdAt: m.createdAt.toISOString(),
+      createdAt: m.createdAt.getTime(),
     })),
     page,
     pageSize,

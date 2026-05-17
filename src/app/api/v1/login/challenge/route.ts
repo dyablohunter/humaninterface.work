@@ -21,6 +21,10 @@ export async function POST(req: NextRequest) {
   }
   const { pubkey } = parsed.data;
   const nonce = randomBytes(16).toString("hex");
+  // `issuedAt` is embedded into the signed login message verbatim (see
+  // loginMessage) and into the challenge cookie token. It is part of the
+  // signing protocol, not a UI/API timestamp — kept as ISO 8601 for human-
+  // readable signature payloads. Do NOT convert to Unix ms here.
   const issuedAt = new Date().toISOString();
   const exp = Math.floor(Date.now() / 1000) + CHALLENGE_TTL_SEC;
 

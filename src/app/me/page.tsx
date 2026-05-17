@@ -9,6 +9,7 @@ import { computeReputation } from "@/lib/reputation";
 import { TYPE_LABEL, humanizeEnum } from "@/lib/tier-ui";
 import { MeTabs, type TabSection } from "@/components/MeTabs";
 import { MessageThread } from "@/components/MessageThread";
+import { FormattedDate } from "@/components/time/FormattedDate";
 
 export const dynamic = "force-dynamic";
 
@@ -105,7 +106,10 @@ export default async function MePage() {
             <p>
               Reputation:{" "}
               <strong>
-                {rep && rep.score != null ? `${Math.round(rep.score * 100)}%` : "unrated"}
+                {rep ? `${Math.round(rep.score * 100)}%` : "—"}
+                {rep && rep.paid + rep.rejected === 0 && (
+                  <span className="muted text-sm" style={{ fontWeight: 400 }}> (no history yet)</span>
+                )}
               </strong>{" "}
               · Completed &amp; paid: <strong>{profile.completed}</strong> · Active:{" "}
               <strong>{activeSlots.length}</strong> · Open bids:{" "}
@@ -118,6 +122,9 @@ export default async function MePage() {
             </Link>
             <Link href="/me/profile" className="btn">
               Edit categories &amp; bio
+            </Link>
+            <Link href={`/u/${user.username}`} className="btn">
+              View public profile
             </Link>
           </div>
         </>
@@ -169,7 +176,9 @@ export default async function MePage() {
                 <Link href={`/open-work/${s.task.id}`}>{s.task.title}</Link> - {TYPE_LABEL[s.task.type]}
                 {s.awardedUsdt != null && <> · {fmtUsdt(Number(s.awardedUsdt))} USDT</>}
                 {s.decidedAt && (
-                  <span className="muted"> · {s.decidedAt.toLocaleDateString()}</span>
+                  <span className="muted">
+                    {" "}· <FormattedDate ts={s.decidedAt.getTime()} format="medium" />
+                  </span>
                 )}
               </li>
             ))}
@@ -215,8 +224,11 @@ export default async function MePage() {
           <p>
             Reputation:{" "}
             <strong>
-              {rep && rep.score != null ? `${Math.round(rep.score * 100)}%` : "unrated"}
-            </strong>{" "}
+              {rep ? `${Math.round(rep.score * 100)}%` : "—"}
+            </strong>
+            {rep && rep.paid + rep.rejected === 0 && (
+              <span className="muted text-sm"> (no history yet)</span>
+            )}{" "}
             · Completed &amp; paid: <strong>{profile.completed}</strong>{" "}
             <span className="muted">
               (micro {profile.microPaid} · task {profile.taskPaid} · job {profile.jobPaid})
@@ -224,8 +236,9 @@ export default async function MePage() {
             · Rejections: {profile.rejectedCount} · Disputes: {profile.disputed}
           </p>
           <p className="muted text-md">
-            Reputation = paid completions ÷ (paid completions + rejections). Posters may require a
-            minimum to bid.
+            Reputation = paid completions ÷ (paid completions + rejections). New humans start at
+            100% (no history) and reputation only goes down as rejections accumulate. Posters may
+            require a minimum to bid.
           </p>
           <p>Categories you offer ({profile.categories.length}):</p>
           <p>

@@ -4,13 +4,19 @@ import { useEffect, useState } from "react";
 import { Timer } from "lucide-react";
 
 /**
- * Live countdown to an ISO deadline. Renders e.g. "2d 4h 12m" and ticks once
- * a minute (seconds shown only under an hour). Shows "expired" once passed.
+ * Live countdown to a deadline expressed as Unix milliseconds (number).
+ *
+ * Renders e.g. "2d 4h 12m" and ticks once a second (seconds shown only under
+ * an hour). Shows "expired" once passed. Goes red within 6 hours of expiry.
+ *
+ * Time-dependent text is gated behind a mount effect to avoid hydration
+ * mismatches (`Date.now()` and locale formatting differ server vs. client).
+ *
+ * The root element is a `<time>` carrying `dateTime` (ISO) and `title`
+ * (verbatim `"Server UNIX Date/Time: <ms>"`) so hovers reveal the exact
+ * server timestamp the deadline was computed against.
  */
-export function Countdown({ target, className }: { target: string; className?: string }) {
-  // Render nothing time-dependent until mounted: Date.now() and locale-based
-  // date formatting both differ between server and client and would otherwise
-  // cause a hydration mismatch.
+export function Countdown({ target, className }: { target: number; className?: string }) {
   const [now, setNow] = useState<number | null>(null);
 
   useEffect(() => {
@@ -19,11 +25,21 @@ export function Countdown({ target, className }: { target: string; className?: s
     return () => clearInterval(id);
   }, []);
 
+  const iso = new Date(target).toISOString();
+  const title = `Server UNIX Date/Time: ${target}`;
+
   if (now === null) {
-    return <span className={className} suppressHydrationWarning />;
+    return (
+      <time
+        className={className}
+        dateTime={iso}
+        title={title}
+        suppressHydrationWarning
+      />
+    );
   }
 
-  const ms = new Date(target).getTime() - now;
+  const ms = target - now;
   if (Number.isNaN(ms)) return null;
 
   const iconStyle = {
@@ -35,10 +51,15 @@ export function Countdown({ target, className }: { target: string; className?: s
 
   if (ms <= 0) {
     return (
-      <span className={className} style={{ color: "var(--danger)", ...iconStyle }}>
+      <time
+        className={className}
+        dateTime={iso}
+        title={title}
+        style={{ color: "var(--danger)", ...iconStyle }}
+      >
         <Timer size="1em" aria-hidden />
         expired
-      </span>
+      </time>
     );
   }
 
@@ -56,13 +77,14 @@ export function Countdown({ target, className }: { target: string; className?: s
   const urgent = ms < 6 * 3600 * 1000; // < 6h
 
   return (
-    <span
+    <time
       className={className}
-      title={`Deadline: ${new Date(target).toLocaleString()}`}
+      dateTime={iso}
+      title={title}
       style={urgent ? { color: "var(--danger)", fontWeight: 600, ...iconStyle } : iconStyle}
     >
       <Timer size="1em" aria-hidden />
-      {label} left
-    </span>
+      {label}
+    </time>
   );
 }

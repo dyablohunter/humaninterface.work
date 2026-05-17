@@ -3,7 +3,7 @@ import { Category, TaskType } from "@prisma/client";
 /**
  * Pricing & taxonomy - single source of truth.
  *
- * The 75-entry Category enum is defined in prisma/schema.prisma. This file holds the
+ * The 116-entry Category enum is defined in prisma/schema.prisma. This file holds the
  * per-category metadata (label, group, description, rarity, base rate) plus the
  * pricing formula.
  *
@@ -25,7 +25,7 @@ import { Category, TaskType } from "@prisma/client";
  *   TASK   - > 60 and ≤ 480 minutes
  *   JOB    - > 480 minutes (multi-day, paid by daily milestones)
  *
- * SKILL TAXONOMY (75 sub-categories under 11 parent groups)
+ * SKILL TAXONOMY (116 sub-categories under 11 parent groups)
  *   Each row carries:
  *     - label (display name)
  *     - group (one of 11 parent groups from the original taxonomy)
@@ -113,6 +113,11 @@ const RAW: readonly RawRow[] = [
   ["TAILORING", "Tailoring & alterations", "PHYSICAL_DEXTERITY", "Garment alteration, bespoke construction, fitting.", 6, 2, 50],
   ["JEWELRY_AND_WATCH", "Jewelry & watchmaking/repair", "PHYSICAL_DEXTERITY", "Bench jewelry work and mechanical-watch service.", 7, 0.1, 90],
   ["POTTERY_CERAMICS", "Pottery & ceramics", "CREATIVITY", "Wheel-throwing, hand-building, glazing, kiln firing.", 6, 0.5, 60],
+  ["HANDWRITING_SAMPLE", "Handwriting sample", "PHYSICAL_DEXTERITY", "Provide handwritten samples to a specification (training data, calligraphy, signature studies).", 3, 80, 20],
+  ["LEATHERWORKING", "Leatherworking", "PHYSICAL_DEXTERITY", "Cutting, stitching, tooling, and finishing leather goods.", 6, 0.5, 40],
+  ["GLASSBLOWING", "Glassblowing", "PHYSICAL_DEXTERITY", "Hot-glass forming, blowing, sculpting, and cold-work finishing.", 8, 0.02, 80],
+  ["BLACKSMITHING", "Blacksmithing", "PHYSICAL_DEXTERITY", "Forged metalwork — hammer, anvil, forge, joinery.", 7, 0.05, 60],
+  ["MASONRY_STONEWORK", "Masonry & stonework", "PHYSICAL_DEXTERITY", "Stone laying, dry-stack, mortared work, restoration.", 6, 0.5, 60],
 
   // ── Vehicles & heavy machinery
   ["CDL_DRIVING", "Commercial driving (CDL)", "TOOL_OPERATION", "Commercial-class truck/bus operation under licensure.", 5, 5, 40],
@@ -120,29 +125,44 @@ const RAW: readonly RawRow[] = [
   ["AIRCRAFT_PILOTING", "Aircraft piloting", "TOOL_OPERATION", "Commercial or ATP-level fixed-wing aircraft piloting.", 9, 0.05, 300],
   ["MARINE_OPERATION", "Marine vessel operation", "TOOL_OPERATION", "Licensed captain/mate operating commercial or large private vessels.", 8, 0.5, 120],
   ["DRONE_COMMERCIAL", "Commercial drone piloting", "TOOL_OPERATION", "Part-107 (or equivalent) certified commercial UAS operation.", 5, 1, 80],
+  ["DRIVING_INSTRUCTION", "Driving instruction", "TOOL_OPERATION", "Teach learners to drive on public roads under licensure.", 5, 0.5, 50],
 
   // ── Performing arts
   ["MUSICAL_INSTRUMENT", "Musical instrument performance", "CREATIVITY", "Performance-grade mastery of an instrument for live or studio work.", 8, 0.5, 150],
   ["VOCAL_PERFORMANCE", "Vocal performance", "CREATIVITY", "Trained singing for stage, studio, or studio session.", 8, 0.2, 200],
   ["ACTING_PERFORMANCE", "Acting (theatre/film/voice)", "CREATIVITY", "Trained acting for stage, film, voice-over, or commercial work.", 8, 0.5, 150],
+  ["VOICE_SAMPLE", "Voice sample", "CREATIVITY", "Provide voice samples to a specification (training data, accent corpora, voice-over auditions).", 3, 80, 20],
+  ["LIVE_SOUND_ENGINEERING", "Live sound engineering", "TOOL_OPERATION", "Live audio mixing, monitoring, and FOH/monitor engineering at events.", 7, 0.3, 70],
+
+  // ── Sport & fitness
+  ["ATHLETIC_COACHING", "Athletic coaching", "SOCIAL_LEADERSHIP", "Coach a sport at amateur or competitive level.", 5, 1, 40],
+  ["PERSONAL_TRAINING", "Personal training", "EMBODIED_PRESENCE", "1:1 fitness instruction and programming.", 4, 3, 40],
+  ["YOGA_INSTRUCTION", "Yoga instruction", "EMBODIED_PRESENCE", "Lead a yoga class or private session at certified level.", 5, 2, 50],
+  ["MARTIAL_ARTS_INSTRUCTION", "Martial arts instruction", "EMBODIED_PRESENCE", "Teach martial arts at qualified-instructor level.", 6, 0.5, 50],
+  ["SPORTS_OFFICIATING", "Sports officiating", "ETHICAL_JUDGMENT", "Referee, umpire, or judge a sport in real time.", 5, 1, 30],
 
   // ── Visual arts & design
   ["ILLUSTRATION", "Illustration & drawing", "CREATIVITY", "Professional-grade illustration in traditional or digital media.", 7, 2, 80],
   ["PHOTOGRAPHY", "Photography", "CREATIVITY", "Commercial-grade photography for editorial, portrait, product, or event.", 6, 5, 80],
   ["GRAPHIC_DESIGN", "Graphic design", "CREATIVITY", "Layout, typography, identity systems, marketing collateral.", 6, 3, 70],
   ["UX_UI_DESIGN", "UX / UI design", "CREATIVITY", "Product interface design grounded in user research and interaction patterns.", 7, 1, 120],
+  ["FLORAL_DESIGN", "Floral design", "CREATIVITY", "Florist composition, event arrangements, bouquet work.", 5, 1, 40],
+  ["MAKEUP_ARTISTRY", "Makeup artistry", "CREATIVITY", "Theatrical, event, bridal, or SFX makeup application.", 6, 0.5, 60],
 
   // ── Writing & language
   ["FICTION_WRITING", "Fiction writing", "CREATIVITY", "Publishable short or long-form narrative fiction.", 8, 1, 90],
   ["COPYWRITING", "Copywriting & marketing", "CREATIVITY", "Conversion-oriented marketing copy across channels.", 6, 5, 80],
   ["TECHNICAL_WRITING", "Technical writing", "CREATIVITY", "API docs, manuals, specifications, knowledge bases.", 6, 2, 90],
   ["TRANSLATION_RARE_LANGUAGE", "Translation (rare / low-resource language)", "CREATIVITY", "Translation in language pairs with limited NMT coverage.", 8, 0.05, 150],
+  ["LIVE_INTERPRETATION", "Live language interpretation", "SOCIAL_LEADERSHIP", "Real-time spoken-language interpretation between parties.", 8, 0.5, 100],
+  ["SIGN_LANGUAGE_INTERPRETATION", "Sign language interpretation", "SOCIAL_LEADERSHIP", "Live sign-language interpretation.", 8, 0.1, 80],
 
   // ── Culinary & sensory
   ["PROFESSIONAL_COOKING", "Professional cooking", "CREATIVITY", "Restaurant-grade kitchen work at the line, chef, or pastry level.", 7, 3, 60],
   ["BARTENDING", "Bartending & mixology", "CREATIVITY", "Cocktail service, menu development, classic technique.", 5, 5, 40],
   ["WINE_SOMMELIER", "Wine / spirits sommelier", "CREATIVITY", "Certified somm-level pairing, tasting, and beverage program work.", 8, 0.05, 150],
   ["COFFEE_BARISTA", "Coffee barista (specialty)", "CREATIVITY", "Specialty coffee preparation, latte art, espresso calibration.", 4, 5, 35],
+  ["SENSORY_EVALUATION", "Sensory evaluation", "EMBODIED_PRESENCE", "Taste, smell, touch, or sight-judge a physical product requiring an embodied human.", 5, 5, 50],
 
   // ── Care & companionship
   ["CHILDCARE", "Childcare / nanny", "CIVIC_CONTINUITY", "Day-to-day care, supervision, and developmental engagement of children.", 5, 30, 25],
@@ -164,11 +184,13 @@ const RAW: readonly RawRow[] = [
   ["LEGAL_ADVICE", "Legal advice (licensed attorney)", "ETHICAL_JUDGMENT", "Bar-admitted legal counsel under attorney-client privilege.", 8, 0.5, 300],
   ["NOTARY_WITNESS", "Notary / in-person witness", "ETHICAL_JUDGMENT", "Document notarization, identity verification, witnessed signing.", 4, 2, 30],
   ["COMPLIANCE_REVIEW", "Compliance review / ethical audit", "ETHICAL_JUDGMENT", "Human review of AI outputs, content moderation, regulatory checks.", 7, 1, 150],
+  ["MODEL_OUTPUT_RATING", "AI output rating / RLHF", "ETHICAL_JUDGMENT", "Rate / rank / annotate AI outputs for quality, safety, or correctness — RLHF-style human preference labelling.", 4, 30, 30],
 
   // ── Social leadership
   ["PUBLIC_SPEAKING", "Public speaking / keynote", "SOCIAL_LEADERSHIP", "Professional-grade keynote, panel, or stage speaking.", 7, 2, 200],
   ["SALES_NEGOTIATION", "High-stakes sales & negotiation", "SOCIAL_LEADERSHIP", "Enterprise sales, complex multi-party deal closing.", 7, 2, 150],
   ["EVENT_HOSTING", "Event hosting / MC", "SOCIAL_LEADERSHIP", "Live event hosting, master of ceremonies, panel moderation.", 6, 2, 80],
+  ["PHONE_CALL_PLACING", "Phone call placing", "SOCIAL_LEADERSHIP", "Make a phone call on behalf (info retrieval, reservation, follow-up) and report what was said.", 3, 50, 25],
 
   // ── Courage & high-risk
   ["PRIVATE_SECURITY", "Private security / bodyguarding", "COURAGE", "Trained close-protection or armed security work.", 6, 2, 60],
@@ -180,11 +202,25 @@ const RAW: readonly RawRow[] = [
   ["WEDDING_OFFICIATION", "Wedding officiation", "EMBODIED_PRESENCE", "Officiating legally recognized marriage ceremonies.", 5, 1, 80],
   ["FUNERAL_OFFICIATION", "Funeral officiation / clergy", "EMBODIED_PRESENCE", "Officiating funerals, memorials, religious services.", 5, 0.5, 100],
   ["COURT_TESTIMONY", "Court testimony / expert witness", "EMBODIED_PRESENCE", "Sworn expert-witness testimony or deposition.", 6, 1, 80],
+  ["LIVE_VIDEO_CALL", "Live video call presence", "EMBODIED_PRESENCE", "Attend or represent in a real-time video call (interview, meeting, demo, ceremony).", 4, 50, 40],
+
+  // ── On-camera presence
+  ["PHOTO_MODEL", "Photo / video modelling", "EMBODIED_PRESENCE", "Model for commercial, editorial, or product photography.", 3, 2, 60],
+  ["LIFE_DRAWING_MODEL", "Life drawing model", "EMBODIED_PRESENCE", "Figure modelling for art studios or classes (clothed or nude).", 4, 0.5, 40],
+  ["FILM_EXTRA", "Film / TV extra", "EMBODIED_PRESENCE", "Background presence on film, TV, or commercial productions.", 2, 10, 25],
+
+  // ── Paid research participation
+  ["FOCUS_GROUP_PARTICIPATION", "Focus group participation", "CIVIC_CONTINUITY", "Participate in a market-research focus group or structured interview.", 2, 70, 30],
+  ["MEDICAL_TRIAL_PARTICIPATION", "Medical trial participation", "EMBODIED_PRESENCE", "Enroll in and complete a paid clinical trial under licensed supervision.", 3, 50, 30],
 
   // ── Strategic
   ["CRISIS_CONSULTING", "Crisis management consulting", "CAUSAL_REASONING", "Strategic advice during ongoing crises (PR, security, financial).", 8, 0.5, 300],
   ["INVESTIGATIVE_RESEARCH", "Investigative research", "CAUSAL_REASONING", "Deep human investigation: people, money, supply chains, records.", 7, 1, 150],
   ["FORECASTING_ANALYSIS", "Forecasting / scenario analysis", "CAUSAL_REASONING", "Superforecaster-style probabilistic estimation over messy domains.", 8, 0.5, 200],
+  ["UX_USABILITY_TESTING", "UX usability testing", "CAUSAL_REASONING", "Use software/app/site to a script and report friction, confusion, dead-ends.", 4, 20, 40],
+  ["BETA_TESTING", "Beta / pre-release testing", "CAUSAL_REASONING", "Structured pre-release testing of software with bug reports and feedback.", 4, 20, 35],
+  ["ACCESSIBILITY_TESTING", "Accessibility testing", "CAUSAL_REASONING", "Test apps/sites with assistive tech (screen reader, keyboard-only, color-vision constraints, motor limits).", 5, 2, 60],
+  ["BUG_REPRODUCTION", "Bug reproduction", "CAUSAL_REASONING", "Reproduce a specific reported bug with steps, environment details, and evidence.", 4, 15, 40],
 
   // ── Living-systems & fieldcraft
   ["LIVESTOCK_HANDLING", "Livestock handling & husbandry", "FIELDCRAFT", "Daily care, handling, breeding, and field management of livestock.", 6, 2, 40],
@@ -193,11 +229,16 @@ const RAW: readonly RawRow[] = [
   ["FORAGING_MYCOLOGY", "Foraging / mycology", "FIELDCRAFT", "Wild edible identification, mushroom hunting, safe foraging.", 6, 0.3, 60],
   ["COMMERCIAL_FISHING", "Commercial fishing", "FIELDCRAFT", "Licensed commercial fishing, crabbing, harvesting at sea.", 6, 0.5, 50],
   ["ARBORIST_TREE_CLIMBING", "Arborist / tree climbing", "FIELDCRAFT", "Certified arboriculture, climbing, pruning, removal.", 7, 0.3, 100],
+  ["PHYSICAL_INSPECTION", "Physical inspection", "FIELDCRAFT", "Inspect a physical object, parcel, or space close-up — count, condition, defects — and report.", 3, 30, 30],
+  ["FIELD_BIOLOGY", "Field biology", "FIELDCRAFT", "Sample collection, species observation, tagging, transects.", 6, 0.2, 50],
+  ["FIELD_GEOLOGY", "Field geology", "FIELDCRAFT", "Rock/soil/water sampling and mapping in field conditions.", 6, 0.1, 50],
+  ["ARCHAEOLOGICAL_FIELDWORK", "Archaeological fieldwork", "FIELDCRAFT", "Site survey, careful excavation, find recording.", 7, 0.05, 50],
 
   // ── Body & wellness
   ["MASSAGE_THERAPY", "Massage therapy", "PHYSICAL_DEXTERITY", "Licensed therapeutic, sports, or clinical massage.", 6, 2, 80],
   ["TATTOO_ARTISTRY", "Tattoo artistry", "PHYSICAL_DEXTERITY", "Professional tattooing combining design and tactile precision.", 7, 0.3, 150],
   ["HAIRSTYLING", "Hairstyling / barbering", "PHYSICAL_DEXTERITY", "Licensed cosmetology, cutting, color, barbering.", 5, 3, 60],
+  ["HARDWARE_ASSEMBLY", "Hardware assembly", "TOOL_OPERATION", "Assemble electronics, mechanical kits, or hardware units to specification.", 3, 5, 25],
 
   // ── High-availability (suited to MICRO tasks)
   ["LOCAL_OBSERVATION", "Local observation / go-look-and-report", "CIVIC_CONTINUITY", "Physically go to a place and report what is or isn't there.", 2, 80, 15],
@@ -205,6 +246,26 @@ const RAW: readonly RawRow[] = [
   ["AUDIO_TRANSCRIPTION", "Audio transcription", "CIVIC_CONTINUITY", "Transcribe audio to text where automated tools fail (accents, noise, code-switching).", 3, 50, 20],
   ["DATA_LABELING", "Data labeling / tagging", "CIVIC_CONTINUITY", "Human-judged labeling for ML training and edge-case correction.", 3, 70, 20],
   ["DELIVERY_RUNNER", "Local delivery / errand running", "CIVIC_CONTINUITY", "Pick up, drop off, or run a quick local errand on behalf of the requester.", 2, 70, 20],
+
+  // ── Digital / AI-fallback
+  ["SCREENSHOT_CAPTURE", "Screenshot capture", "CIVIC_CONTINUITY", "Capture screenshots of websites, apps, or device UIs that AI can't reach (paywalls, login-gated, geo-blocked, hardware-specific).", 2, 80, 15],
+  ["VIDEO_RECORDING", "Video recording to spec", "CREATIVITY", "Record a video to a specification (demo, unboxing, location footage, tutorial).", 4, 30, 35],
+  ["AUDIO_RECORDING", "Audio recording to spec", "CREATIVITY", "Record audio (voice-over, ambient, narration, demo) to a specification.", 4, 20, 35],
+  ["MANUAL_WEB_TASK", "Manual web task", "CIVIC_CONTINUITY", "Fill forms, navigate wizards, or click through workflows that automation can't reach (auth walls, multi-step UIs).", 2, 70, 18],
+  ["MYSTERY_SHOPPING", "Mystery shopping", "CIVIC_CONTINUITY", "Visit a business, complete a defined script, evaluate and report the experience.", 3, 30, 25],
+
+  // ── Catch-all
+  // OTHER is a deliberate escape hatch for legitimate human work that does
+  // not fit any defined category. AIs should use it sparingly and describe
+  // the work fully in the task description — the category provides almost
+  // no eligibility signal here. Eligibility matching is strict membership
+  // (see src/lib/bids.ts → `profile.categories.includes(task.category)`):
+  // only humans who have explicitly added OTHER to their declared categories
+  // will be allowed to bid on OTHER tasks, so humans who do not want to
+  // receive catch-all work simply leave it off their profile. Humans who
+  // do add OTHER must read each task's description carefully — the category
+  // does not constrain what the work is.
+  ["OTHER", "Other (describe in task)", "CIVIC_CONTINUITY", "Catch-all for any legitimate human work that does not fit any defined category. The AI must describe the work fully in the task description; humans bidding accept that the category does not constrain eligibility.", 5, 50, 30],
 ] as const;
 
 export const CATEGORY_META: Record<Category, CategoryMeta> = Object.fromEntries(

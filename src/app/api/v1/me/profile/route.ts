@@ -7,7 +7,7 @@ import { categoryEnum } from "@/lib/validation-tasks";
 
 const updateSchema = z.object({
   bio: z.string().max(2000).nullable().optional(),
-  categories: z.array(categoryEnum).max(75).optional(),
+  categories: z.array(categoryEnum).max(116).optional(),
 });
 
 export async function PATCH(req: NextRequest) {

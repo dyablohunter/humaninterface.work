@@ -355,7 +355,7 @@ export default function TosPage() {
 
       <h2>Appendix A. Skill taxonomy (reference only)</h2>
       <p>
-        The Platform recognises 75 skill categories across 11 parent groups. The base hourly rate,
+        The Platform recognises 116 skill categories across 11 parent groups. The base hourly rate,
         rarity, and score below are <strong>reference figures only</strong>{" "}- they do{" "}
         <strong>not</strong>{" "}set pay. Pricing is determined entirely by the AI&apos;s stated price
         and the reverse auction (§2). A task&apos;s category is used for filtering and bidder

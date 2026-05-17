@@ -7,11 +7,14 @@ import { AdminDisputeRow } from "@/components/AdminDisputeRow";
 import { AdminUserSuspend } from "@/components/AdminUserSuspend";
 import { AdminTestSuite } from "@/components/AdminTestSuite";
 import { AdminTaskDelete } from "@/components/AdminTaskDelete";
+import { CopyIdButton } from "@/components/CopyIdButton";
 import { AdminModerationRow } from "@/components/AdminModerationRow";
 import { ARCHIVED_STATUSES } from "@/lib/tasks";
 import { TYPE_LABEL, humanizeEnum } from "@/lib/tier-ui";
 import { MeTabs } from "@/components/MeTabs";
 import { SwitchView } from "@/components/SwitchView";
+import { FormattedDateTime } from "@/components/time/FormattedDateTime";
+import { LocationDisplay } from "@/components/LocationDisplay";
 
 export const dynamic = "force-dynamic";
 
@@ -208,7 +211,7 @@ export default async function AdminPage() {
                           {recentContact.map((m) => (
                             <div key={m.id} className="card">
                               <p className="muted mb-xs text-md">
-                                <strong>{m.name}</strong> · <code>{m.email}</code> · {m.createdAt.toLocaleString()}
+                                <strong>{m.name}</strong> · <code>{m.email}</code> · <FormattedDateTime ts={m.createdAt.getTime()} />
                               </p>
                               <pre className="muted-pre">
                                 {m.body}
@@ -231,7 +234,7 @@ export default async function AdminPage() {
                           {recentSuggestions.map((s) => (
                             <div key={s.id} className="card">
                               <p className="muted mb-xs text-md">
-                                <code>{s.user.username}</code> ({s.user.role}) · {s.createdAt.toLocaleString()}
+                                <code>{s.user.username}</code> ({s.user.role}) · <FormattedDateTime ts={s.createdAt.getTime()} />
                               </p>
                               <pre className="muted-pre">
                                 {s.body}
@@ -281,9 +284,11 @@ export default async function AdminPage() {
                               </p>
                               <p className="muted mb-xs text-md">
                                 by <code>{p.author.username}</code> ·{" "}
-                                {p.qualifiedAt
-                                  ? `qualified ${p.qualifiedAt.toLocaleString()}`
-                                  : p.createdAt.toLocaleString()}
+                                {p.qualifiedAt ? (
+                                  <>qualified <FormattedDateTime ts={p.qualifiedAt.getTime()} /></>
+                                ) : (
+                                  <FormattedDateTime ts={p.createdAt.getTime()} />
+                                )}
                               </p>
                               <pre className="muted-pre">
                                 {p.body}
@@ -314,7 +319,7 @@ export default async function AdminPage() {
                                 <span className="tag">{humanizeEnum(p.status)}</span>
                               </p>
                               <p className="muted mb-xs text-md">
-                                by <code>{p.author.username}</code> · {p.createdAt.toLocaleString()}
+                                by <code>{p.author.username}</code> · <FormattedDateTime ts={p.createdAt.getTime()} />
                               </p>
                               <pre className="muted-pre">
                                 {p.body}
@@ -359,7 +364,7 @@ export default async function AdminPage() {
                               kind={d.slotId ? "SLOT" : "MILESTONE"}
                               raisedByUsername={d.raisedBy.username}
                               reason={d.reason}
-                              createdAt={d.createdAt.toISOString()}
+                              createdAt={d.createdAt.getTime()}
                             />
                           );
                         })}
@@ -391,7 +396,7 @@ export default async function AdminPage() {
                               <ul className="m-0">
                                 {rp.reports.map((r) => (
                                   <li key={r.id} className="muted text-md">
-                                    <code>{r.user.username}</code> · {r.createdAt.toLocaleString()}
+                                    <code>{r.user.username}</code> · <FormattedDateTime ts={r.createdAt.getTime()} />
                                     {r.reason ? <> - {r.reason}</> : null}
                                   </li>
                                 ))}
@@ -415,7 +420,7 @@ export default async function AdminPage() {
                             <li key={t.id}>
                               <Link href={`/open-work/${t.id}`}>{t.title}</Link> ·{" "}
                               {t.fairnessFlags} flags · posted by{" "}
-                              <code>{t.poster.username}</code>
+                              <Link href={`/u/${t.poster.username}`}><code>{t.poster.username}</code></Link>
                             </li>
                           ))}
                         </ul>
@@ -448,7 +453,7 @@ export default async function AdminPage() {
                                 <code className="text-sm">
                                   {m.pubkey.slice(0, 8)}…
                                 </code>{" "}
-                                · attempts {m.attempts} · {m.createdAt.toLocaleString()}
+                                · attempts {m.attempts} · <FormattedDateTime ts={m.createdAt.getTime()} />
                                 {m.targetId ? <> · target <code>{m.targetId}</code></> : null}
                                 {m.lastError ? <> · last error: {m.lastError}</> : null}
                                 {m.category && m.category !== "none" ? (
@@ -511,7 +516,7 @@ export default async function AdminPage() {
                           <td><code>{b.pubkey.slice(0, 12)}…</code></td>
                           <td>{b.category}</td>
                           <td>{b.detail ?? "-"}</td>
-                          <td>{b.bannedAt.toLocaleString()}</td>
+                          <td><FormattedDateTime ts={b.bannedAt.getTime()} /></td>
                         </tr>
                       ))}
                     </tbody>
@@ -552,17 +557,23 @@ export default async function AdminPage() {
                         <td>{TYPE_LABEL[t.type]}</td>
                         <td>{humanizeEnum(t.status)}</td>
                         <td>
-                          {t.country
-                            ? t.city
-                              ? `${t.city}, ${t.country}`
-                              : t.country
-                            : <span className="muted">Remote</span>}
+                          <LocationDisplay
+                            latitude={t.latitude}
+                            longitude={t.longitude}
+                            country={t.country}
+                            city={t.city}
+                          />
                         </td>
                         <td>
-                          <code>{t.poster.username}</code>
+                          <Link href={`/u/${t.poster.username}`}><code>{t.poster.username}</code></Link>
                         </td>
-                        <td>{t.createdAt.toLocaleString()}</td>
-                        <td><AdminTaskDelete taskId={t.id} title={t.title} /></td>
+                        <td><FormattedDateTime ts={t.createdAt.getTime()} /></td>
+                        <td>
+                          <span className="row gap-xs">
+                            <CopyIdButton id={t.id} />
+                            <AdminTaskDelete taskId={t.id} title={t.title} />
+                          </span>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -605,18 +616,24 @@ export default async function AdminPage() {
                           <td>{TYPE_LABEL[t.type]}</td>
                           <td>{humanizeEnum(t.status)}</td>
                           <td>
-                            {t.country
-                              ? t.city
-                                ? `${t.city}, ${t.country}`
-                                : t.country
-                              : <span className="muted">Remote</span>}
+                            <LocationDisplay
+                              latitude={t.latitude}
+                              longitude={t.longitude}
+                              country={t.country}
+                              city={t.city}
+                            />
                           </td>
-                          <td>{t.deadlineAt ? t.deadlineAt.toLocaleString() : "-"}</td>
+                          <td>{t.deadlineAt ? <FormattedDateTime ts={t.deadlineAt.getTime()} /> : "-"}</td>
                           <td>
                             <code>{t.poster.username}</code>
                           </td>
-                          <td>{t.createdAt.toLocaleString()}</td>
-                          <td><AdminTaskDelete taskId={t.id} title={t.title} /></td>
+                          <td><FormattedDateTime ts={t.createdAt.getTime()} /></td>
+                          <td>
+                            <span className="row gap-xs">
+                              <CopyIdButton id={t.id} />
+                              <AdminTaskDelete taskId={t.id} title={t.title} />
+                            </span>
+                          </td>
                         </tr>
                       ))}
                     </tbody>

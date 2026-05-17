@@ -62,7 +62,7 @@ enum EvidenceType {
   VIDEO
 }
 
-/// Skill taxonomy - 75 sub-categories spanning the AI-resilient skill space.
+/// Skill taxonomy - 116 sub-categories spanning the AI-resilient skill space.
 /// See src/lib/pricing.ts for difficulty / rarity / rate calibration.
 enum Category {
   // Medical & life-critical
@@ -85,6 +85,11 @@ enum Category {
   TAILORING
   JEWELRY_AND_WATCH
   POTTERY_CERAMICS
+  HANDWRITING_SAMPLE
+  LEATHERWORKING
+  GLASSBLOWING
+  BLACKSMITHING
+  MASONRY_STONEWORK
 
   // Vehicles & heavy machinery
   CDL_DRIVING
@@ -92,29 +97,44 @@ enum Category {
   AIRCRAFT_PILOTING
   MARINE_OPERATION
   DRONE_COMMERCIAL
+  DRIVING_INSTRUCTION
 
   // Performing arts
   MUSICAL_INSTRUMENT
   VOCAL_PERFORMANCE
   ACTING_PERFORMANCE
+  VOICE_SAMPLE
+  LIVE_SOUND_ENGINEERING
+
+  // Sport & fitness
+  ATHLETIC_COACHING
+  PERSONAL_TRAINING
+  YOGA_INSTRUCTION
+  MARTIAL_ARTS_INSTRUCTION
+  SPORTS_OFFICIATING
 
   // Visual arts & design
   ILLUSTRATION
   PHOTOGRAPHY
   GRAPHIC_DESIGN
   UX_UI_DESIGN
+  FLORAL_DESIGN
+  MAKEUP_ARTISTRY
 
   // Writing & language
   FICTION_WRITING
   COPYWRITING
   TECHNICAL_WRITING
   TRANSLATION_RARE_LANGUAGE
+  LIVE_INTERPRETATION
+  SIGN_LANGUAGE_INTERPRETATION
 
   // Culinary & sensory
   PROFESSIONAL_COOKING
   BARTENDING
   WINE_SOMMELIER
   COFFEE_BARISTA
+  SENSORY_EVALUATION
 
   // Care & companionship
   CHILDCARE
@@ -136,11 +156,13 @@ enum Category {
   LEGAL_ADVICE
   NOTARY_WITNESS
   COMPLIANCE_REVIEW
+  MODEL_OUTPUT_RATING
 
   // Social leadership & persuasion
   PUBLIC_SPEAKING
   SALES_NEGOTIATION
   EVENT_HOSTING
+  PHONE_CALL_PLACING
 
   // Courage & high-risk
   PRIVATE_SECURITY
@@ -152,11 +174,25 @@ enum Category {
   WEDDING_OFFICIATION
   FUNERAL_OFFICIATION
   COURT_TESTIMONY
+  LIVE_VIDEO_CALL
+
+  // On-camera presence
+  PHOTO_MODEL
+  LIFE_DRAWING_MODEL
+  FILM_EXTRA
+
+  // Paid research participation
+  FOCUS_GROUP_PARTICIPATION
+  MEDICAL_TRIAL_PARTICIPATION
 
   // Strategic reasoning
   CRISIS_CONSULTING
   INVESTIGATIVE_RESEARCH
   FORECASTING_ANALYSIS
+  UX_USABILITY_TESTING
+  BETA_TESTING
+  ACCESSIBILITY_TESTING
+  BUG_REPRODUCTION
 
   // Living-systems & fieldcraft
   LIVESTOCK_HANDLING
@@ -165,6 +201,10 @@ enum Category {
   FORAGING_MYCOLOGY
   COMMERCIAL_FISHING
   ARBORIST_TREE_CLIMBING
+  PHYSICAL_INSPECTION
+  FIELD_BIOLOGY
+  FIELD_GEOLOGY
+  ARCHAEOLOGICAL_FIELDWORK
 
   // Body & wellness services
   MASSAGE_THERAPY
@@ -177,6 +217,17 @@ enum Category {
   AUDIO_TRANSCRIPTION
   DATA_LABELING
   DELIVERY_RUNNER
+
+  // Digital / AI-fallback work
+  SCREENSHOT_CAPTURE
+  VIDEO_RECORDING
+  AUDIO_RECORDING
+  MANUAL_WEB_TASK
+  MYSTERY_SHOPPING
+  HARDWARE_ASSEMBLY
+
+  // Catch-all
+  OTHER
 }
 
 enum DisputeStatus {
@@ -278,9 +329,25 @@ model Task {
   country           String?
   /// Free-text city (trimmed, max 80 chars). Null when country is null.
   city              String?
+  /// Optional precise pin (decimal degrees). When set, both must be set —
+  /// the API zod refine enforces the pair-or-null rule. Coordinates are
+  /// displayed as a Google Maps link in the UI and take precedence over
+  /// country/city for *display* (those remain for filtering).
+  latitude          Float?
+  longitude         Float?
   createdAt         DateTime   @default(now())
   fundedAt          DateTime?
+  /// 24h purge window for unfunded (PENDING_DEPOSIT) tasks. NOT the bidding
+  /// clock - bidding has its own field `biddingClosesAt` below.
   expiresAt         DateTime
+  /// AI-set bidding window length in hours. Must be 24 or 48. Required at
+  /// task create; immutable thereafter.
+  biddingHours      Int
+  /// Absolute close time of the reverse auction. Set when the task transitions
+  /// PENDING_DEPOSIT → OPEN: `fundedAt + biddingHours hours`. Null until then.
+  /// The worker auto-accepts the lowest qualifying bid per remaining OPEN slot
+  /// shortly after this passes.
+  biddingClosesAt   DateTime?
 
   slots        Slot[]
   milestones   Milestone[]
@@ -293,6 +360,7 @@ model Task {
   @@index([category])
   @@index([country, status, privacy, createdAt])
   @@index([country, city])
+  @@index([status, biddingClosesAt])
 }
 
 model Bid {
@@ -404,9 +472,9 @@ model Application {
 model Dispute {
   id          String        @id @default(cuid())
   slotId      String?       @unique
-  slot        Slot?         @relation(fields: [slotId], references: [id])
+  slot        Slot?         @relation(fields: [slotId], references: [id], onDelete: Cascade)
   milestoneId String?       @unique
-  milestone   Milestone?    @relation(fields: [milestoneId], references: [id])
+  milestone   Milestone?    @relation(fields: [milestoneId], references: [id], onDelete: Cascade)
   raisedById  String
   raisedBy    User          @relation("DisputeRaiser", fields: [raisedById], references: [id])
   reason      String

@@ -60,6 +60,11 @@ if (isProd) {
 }
 
 const nextConfig: NextConfig = {
+  // `geoip-country` reads its data file from disk at runtime via __dirname.
+  // Turbopack would otherwise bundle the package into the server chunk and
+  // strip the data file, causing ENOENT at module load. Keep it external so
+  // it's required from node_modules normally.
+  serverExternalPackages: ["geoip-country"],
   async headers() {
     return [
       {

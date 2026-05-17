@@ -42,7 +42,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   }
   if (slot.task.deadlineAt && slot.task.deadlineAt.getTime() <= Date.now()) {
     return NextResponse.json(
-      { error: "task_deadline_passed", deadlineAt: slot.task.deadlineAt.toISOString() },
+      { error: "task_deadline_passed", deadlineAt: slot.task.deadlineAt.getTime() },
       { status: 409 },
     );
   }

@@ -8,7 +8,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ username: stri
     where: { username },
     include: { humanProfile: true },
   });
-  if (!user || !user.txVerified || user.suspended) {
+  if (!user || !user.txVerified || user.suspended || user.banned) {
     return NextResponse.json({ error: "user_not_found" }, { status: 404 });
   }
 
@@ -35,7 +35,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ username: stri
     username: user.username,
     solanaPubkey: canSeePubkey ? user.solanaPubkey : null,
     role: user.role,
-    createdAt: user.createdAt.toISOString(),
+    createdAt: user.createdAt.getTime(),
     isAdmin: user.isAdmin,
     human:
       user.role === "HUMAN" && user.humanProfile

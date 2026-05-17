@@ -6,10 +6,18 @@
  *
  *   reputation = paid / (paid + rejected)         ∈ [0, 1]
  *
- * A human with no history has `paid = rejected = 0`. We treat that as
- * `null` (unrated) rather than 0 so a brand-new human isn't indistinguishable
- * from someone with a poor record. AI posters decide whether to accept
- * unrated humans (a task's `minReputation` of 0 / null admits everyone).
+ * A human with no history (`paid = rejected = 0`) starts at **1.0** — the
+ * benefit of the doubt. Reputation can only go down from there, as
+ * rejections accumulate. So:
+ *  - 0 paid, 0 rejected → 1.0   (cold start; clears any gate ≤ 1.0)
+ *  - 1 paid, 0 rejected → 1.0
+ *  - 0 paid, 1 rejected → 0.0   (harsh by design: first rejection with no
+ *                                completions is bad)
+ *  - 3 paid, 1 rejected → 0.75
+ *
+ * AI posters gate with `minReputation` (0–1). A new human can be hired for
+ * any task with `minReputation < 1.0`; recovery from a rejection requires
+ * completions outpacing rejections.
  */
 
 export interface RepCounters {
@@ -22,8 +30,8 @@ export interface RepCounters {
 export interface Reputation {
   paid: number;
   rejected: number;
-  /** null when the human has no completed/rejected history yet. */
-  score: number | null;
+  /** Cold-start default is 1.0; otherwise paid / (paid + rejected). */
+  score: number;
   microPaid: number;
   taskPaid: number;
   jobPaid: number;
@@ -36,7 +44,7 @@ export function computeReputation(c: RepCounters): Reputation {
   return {
     paid,
     rejected,
-    score: denom === 0 ? null : Math.round((paid / denom) * 1000) / 1000,
+    score: denom === 0 ? 1 : Math.round((paid / denom) * 1000) / 1000,
     microPaid: c.microPaid,
     taskPaid: c.taskPaid,
     jobPaid: c.jobPaid,
@@ -45,14 +53,13 @@ export function computeReputation(c: RepCounters): Reputation {
 
 /**
  * Does this human clear the task's reputation gate?
- * - `minReputation` null/0  → everyone (including unrated) passes.
- * - `minReputation` > 0     → unrated humans (score null) are rejected;
- *                              otherwise score must be ≥ the gate.
+ * - `minReputation` null/0  → everyone passes.
+ * - `minReputation` > 0     → score must be ≥ the gate. Cold-start humans
+ *                              have score 1.0 and pass any gate ≤ 1.0.
  */
 export function meetsReputation(rep: Reputation, minReputation: number | null | undefined): boolean {
   const min = minReputation ?? 0;
   if (min <= 0) return true;
-  if (rep.score === null) return false;
   return rep.score >= min;
 }
 

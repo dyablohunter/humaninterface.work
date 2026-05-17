@@ -14,6 +14,7 @@ import { purgeStale } from "./purge-stale";
 import { transcodePending } from "./transcode";
 import { pollDeposits } from "./tx-poller";
 import { cleanupUsedNonces } from "./cleanup-nonces";
+import { runAutoAcceptBids } from "./auto-accept-bids";
 import { recheckPendingModeration } from "@/lib/moderation";
 
 const PURGE_INTERVAL_MS = 60_000;
@@ -21,6 +22,7 @@ const TRANSCODE_INTERVAL_MS = 5_000;
 const TX_POLL_INTERVAL_MS = 15_000;
 const MODERATION_RECHECK_INTERVAL_MS = 120_000;
 const NONCE_CLEANUP_INTERVAL_MS = 60 * 60_000; // 1h
+const AUTO_ACCEPT_INTERVAL_MS = 5 * 60_000; // 5m
 
 let running = true;
 
@@ -59,6 +61,19 @@ async function tick() {
   } catch (err) {
     console.error("[worker] cleanupUsedNonces error", err);
   }
+
+  try {
+    const results = await runAutoAcceptBids();
+    if (results.length > 0) {
+      const totalAwarded = results.reduce((n, r) => n + r.awarded, 0);
+      const totalRejected = results.reduce((n, r) => n + r.rejected, 0);
+      console.log(
+        `[worker] auto-accept-bids: ${results.length} tasks, ${totalAwarded} awarded, ${totalRejected} rejected`,
+      );
+    }
+  } catch (err) {
+    console.error("[worker] runAutoAcceptBids error", err);
+  }
 }
 
 async function main() {
@@ -79,6 +94,9 @@ async function main() {
   const nonceCleanupInterval = setInterval(async () => {
     try { await cleanupUsedNonces(); } catch {}
   }, NONCE_CLEANUP_INTERVAL_MS);
+  const autoAcceptInterval = setInterval(async () => {
+    try { await runAutoAcceptBids(); } catch {}
+  }, AUTO_ACCEPT_INTERVAL_MS);
 
   const shutdown = (signal: string) => {
     console.log(`[worker] received ${signal}, shutting down`);
@@ -88,6 +106,7 @@ async function main() {
     clearInterval(txPollInterval);
     clearInterval(moderationInterval);
     clearInterval(nonceCleanupInterval);
+    clearInterval(autoAcceptInterval);
     process.exit(0);
   };
 

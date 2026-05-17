@@ -40,6 +40,12 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   }
   const task = elig.task;
 
+  // Reverse-auction bidding window closed: no new bids and no re-bids accepted.
+  // The worker will (or already did) auto-accept the lowest qualifying bid.
+  if (task.biddingClosesAt && task.biddingClosesAt.getTime() <= Date.now()) {
+    return NextResponse.json({ error: "bidding_closed" }, { status: 400 });
+  }
+
   const statedPriceUsdt = Number(task.statedPriceUsdt);
   const instantAcceptUsdt = Number(task.instantAcceptUsdt);
 

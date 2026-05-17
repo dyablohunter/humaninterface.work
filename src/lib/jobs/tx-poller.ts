@@ -83,11 +83,13 @@ async function tryMatchTask(
   const required = Number(task.totalUsdt);
   if (tx.usdt < required * (1 - TOLERANCE_PCT)) return false;
 
+  const fundedAt = new Date();
+  const biddingClosesAt = new Date(fundedAt.getTime() + task.biddingHours * 60 * 60 * 1000);
   try {
     await prisma.$transaction([
       prisma.task.update({
         where: { id: task.id },
-        data: { status: "OPEN", fundedAt: new Date(), escrowTxSig: signature },
+        data: { status: "OPEN", fundedAt, escrowTxSig: signature, biddingClosesAt },
       }),
       prisma.tokenTxLog.create({
         data: {

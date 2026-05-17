@@ -41,7 +41,7 @@ export async function GET() {
       raisedBy: d.raisedBy,
       reason: d.reason,
       status: d.status,
-      createdAt: d.createdAt.toISOString(),
+      createdAt: d.createdAt.getTime(),
       task: d.slot?.task ?? d.milestone?.slot.task ?? null,
       human: d.slot?.human ?? d.milestone?.slot.human ?? null,
       evidence: (d.slot?.evidence ?? d.milestone?.evidence ?? []).map((e) => ({

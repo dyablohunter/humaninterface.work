@@ -34,9 +34,9 @@ export async function GET() {
         id: r.id,
         username: r.user.username,
         reason: r.reason,
-        createdAt: r.createdAt.toISOString(),
+        createdAt: r.createdAt.getTime(),
       })),
-      createdAt: t.createdAt.toISOString(),
+      createdAt: t.createdAt.getTime(),
     })),
   });
 }

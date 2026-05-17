@@ -61,13 +61,16 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     );
   }
 
+  const fundedAt = new Date();
+  const biddingClosesAt = new Date(fundedAt.getTime() + task.biddingHours * 60 * 60 * 1000);
   await prisma.$transaction([
     prisma.task.update({
       where: { id: task.id },
       data: {
         status: "OPEN",
-        fundedAt: new Date(),
+        fundedAt,
         escrowTxSig: txSignature,
+        biddingClosesAt,
       },
     }),
     prisma.tokenTxLog.create({

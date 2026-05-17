@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { humanizeEnum } from "@/lib/tier-ui";
+import { FormattedDateTime } from "@/components/time/FormattedDateTime";
 
 interface Props {
   id: string;
@@ -12,7 +13,8 @@ interface Props {
   kind: "SLOT" | "MILESTONE";
   raisedByUsername: string;
   reason: string;
-  createdAt: string;
+  /** Unix milliseconds. */
+  createdAt: number;
 }
 
 export function AdminDisputeRow(props: Props) {
@@ -46,7 +48,7 @@ export function AdminDisputeRow(props: Props) {
     <div className="card">
       <p className="muted mb-xs text-md">
         {humanizeEnum(props.kind)} dispute · raised by <code>{props.raisedByUsername}</code> ·{" "}
-        {new Date(props.createdAt).toLocaleString()}
+        <FormattedDateTime ts={props.createdAt} />
       </p>
       <p>
         Task: <Link href={`/open-work/${props.taskId}`}>{props.taskTitle}</Link>

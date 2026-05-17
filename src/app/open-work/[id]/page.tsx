@@ -11,14 +11,28 @@ import { getSession } from "@/lib/auth/session";
 import { TaskActions } from "@/components/TaskActions";
 import { EvidenceList } from "@/components/EvidenceList";
 import { countryName } from "@/lib/countries";
+import { FormattedDateTime } from "@/components/time/FormattedDateTime";
+import { LocationDisplay } from "@/components/LocationDisplay";
 
 /**
- * Human-facing location string from the task's country/city.
- * - both set    → "Portland, United States"
- * - country only → "United States"
- * - neither      → "Remote"
+ * Plain-text variant for SEO metadata only. UI rendering goes through
+ * <LocationDisplay/>.
  */
-function formatLocation(country: string | null, city: string | null): string {
+function formatLocationText(
+  country: string | null,
+  city: string | null,
+  latitude: number | null,
+  longitude: number | null,
+  precision = 4,
+): string {
+  if (
+    typeof latitude === "number" &&
+    typeof longitude === "number" &&
+    Number.isFinite(latitude) &&
+    Number.isFinite(longitude)
+  ) {
+    return `${latitude.toFixed(precision)}, ${longitude.toFixed(precision)}`;
+  }
   const name = countryName(country);
   if (!name) return "Remote";
   if (city) return `${city}, ${name}`;
@@ -65,11 +79,13 @@ export async function generateMetadata({
   }
 
   const title = truncate(task.title, 60);
-  const loc = formatLocation(task.country, task.city);
-  // Append the location to the description if a country was set. Keep the
-  // overall description within the 155-char SEO clamp.
+  const loc = formatLocationText(task.country, task.city, task.latitude, task.longitude);
+  // Append the location to the description if either coords or a country were
+  // set. Keep the overall description within the 155-char SEO clamp.
   const locSuffix =
-    task.country ? ` Posted from ${loc}.` : "";
+    task.country || (task.latitude != null && task.longitude != null)
+      ? ` Posted from ${loc}.`
+      : "";
   const description = truncate(task.description + locSuffix, 155);
   const canonical = `/open-work/${id}`;
 
@@ -82,6 +98,8 @@ export async function generateMetadata({
       url: canonical,
       title,
       description,
+      // OpenGraph spec requires ISO 8601 here — this is SEO metadata, not a
+      // UI render or API field. Do NOT change to Unix ms.
       publishedTime: task.createdAt.toISOString(),
       authors: [task.poster.username],
     },
@@ -216,85 +234,121 @@ export default async function TaskDetail({ params }: { params: Promise<{ id: str
           </span>
         </div>
 
-        <dl
-          style={{
-            display: "grid",
-            gridTemplateColumns: "max-content 1fr",
-            gap: "0.5rem 1.5rem",
-            margin: 0,
-            fontSize: "0.95rem",
-          }}
-        >
-          {task.deadlineAt && (
-            <>
-              <dt
-                className="muted"
-                style={{ display: "inline-flex", alignItems: "center", gap: "0.35em" }}
-              >
-                <CalendarClock size="1em" aria-hidden /> Deadline
-              </dt>
-              <dd style={{ margin: 0 }}>
-                <strong>{task.deadlineAt.toLocaleString()}</strong>{" "}
-                <span className="muted">
-                  (<Countdown target={task.deadlineAt.toISOString()} />)
-                </span>
-              </dd>
-            </>
-          )}
-          {task.minReputation != null && task.minReputation > 0 && (
-            <>
-              <dt
-                className="muted"
-                style={{ display: "inline-flex", alignItems: "center", gap: "0.35em" }}
-              >
-                <Star size="1em" aria-hidden /> Min. reputation
-              </dt>
-              <dd style={{ margin: 0 }}>
-                <strong>{Math.round(task.minReputation * 100)}%</strong>
-              </dd>
-            </>
-          )}
-          <dt
-            className="muted"
-            style={{ display: "inline-flex", alignItems: "center", gap: "0.35em" }}
-          >
-            <Layers size="1em" aria-hidden /> Slots
-          </dt>
-          <dd style={{ margin: 0 }}>
-            {openSlots} open of {task.slotCount} slot{task.slotCount === 1 ? "" : "s"}
-          </dd>
-          <dt
-            className="muted"
-            style={{ display: "inline-flex", alignItems: "center", gap: "0.35em" }}
-          >
-            <Wallet size="1em" aria-hidden /> Escrow
-          </dt>
-          <dd style={{ margin: 0 }}>
-            {fmtUsdt(Number(task.totalUsdt))} USDT
-          </dd>
-          <dt
-            className="muted"
-            style={{ display: "inline-flex", alignItems: "center", gap: "0.35em" }}
-          >
-            <MapPin size="1em" aria-hidden /> Location
-          </dt>
-          <dd style={{ margin: 0 }}>{formatLocation(task.country, task.city)}</dd>
-          <dt
-            className="muted"
-            style={{ display: "inline-flex", alignItems: "center", gap: "0.35em" }}
-          >
-            <Bot size="1em" aria-hidden /> Posted by
-          </dt>
-          <dd style={{ margin: 0 }}>
-            <code>{task.poster.username}</code>
-            {task.fundedAt && (
-              <span className="muted"> · funded {task.fundedAt.toLocaleString()}</span>
-            )}
-          </dd>
-        </dl>
+        {(() => {
+          const stats: Array<{ key: string; label: React.ReactNode; value: React.ReactNode }> = [];
+          if (task.biddingClosesAt) {
+            stats.push({
+              key: "bidding",
+              label: <><CalendarClock size="1em" aria-hidden /> Bidding closes</>,
+              value:
+                task.biddingClosesAt.getTime() > Date.now() ? (
+                  <>
+                    <strong style={{ fontSize: "1.05rem" }}>
+                      <Countdown target={task.biddingClosesAt.getTime()} />
+                    </strong>
+                    <div className="muted" style={{ fontSize: "0.85rem" }}>
+                      <FormattedDateTime ts={task.biddingClosesAt.getTime()} />
+                    </div>
+                  </>
+                ) : (
+                  <strong>Closed</strong>
+                ),
+            });
+          }
+          if (task.deadlineAt) {
+            stats.push({
+              key: "deadline",
+              label: <><CalendarClock size="1em" aria-hidden /> Delivery deadline</>,
+              value: (
+                <>
+                  <strong style={{ fontSize: "1.05rem" }}>
+                    <Countdown target={task.deadlineAt.getTime()} />
+                  </strong>
+                  <div className="muted" style={{ fontSize: "0.85rem" }}>
+                    <FormattedDateTime ts={task.deadlineAt.getTime()} />
+                  </div>
+                </>
+              ),
+            });
+          }
+          if (task.minReputation != null && task.minReputation > 0) {
+            stats.push({
+              key: "minrep",
+              label: <><Star size="1em" aria-hidden /> Min. reputation</>,
+              value: <strong>{Math.round(task.minReputation * 100)}%</strong>,
+            });
+          }
+          stats.push({
+            key: "slots",
+            label: <><Layers size="1em" aria-hidden /> Slots</>,
+            value: <>{openSlots} open of {task.slotCount} slot{task.slotCount === 1 ? "" : "s"}</>,
+          });
+          stats.push({
+            key: "escrow",
+            label: <><Wallet size="1em" aria-hidden /> Escrow</>,
+            value: (
+              <>
+                <strong>{fmtUsdt(Number(task.totalUsdt))} USDT</strong>
+                {task.fundedAt && (
+                  <div className="muted" style={{ fontSize: "0.85rem" }}>
+                    funded{" "}
+                    {task.escrowTxSig ? (
+                      <a
+                        href={`https://solscan.io/tx/${task.escrowTxSig}${
+                          (process.env.NEXT_PUBLIC_SOLANA_NETWORK || "devnet") === "devnet"
+                            ? "?cluster=devnet"
+                            : ""
+                        }`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        title={`Escrow TX: ${task.escrowTxSig}`}
+                        style={{ color: "inherit" }}
+                      >
+                        <FormattedDateTime ts={task.fundedAt.getTime()} />
+                      </a>
+                    ) : (
+                      <FormattedDateTime ts={task.fundedAt.getTime()} />
+                    )}
+                  </div>
+                )}
+              </>
+            ),
+          });
+          stats.push({
+            key: "location",
+            label: <><MapPin size="1em" aria-hidden /> Location</>,
+            value: (
+              <LocationDisplay
+                latitude={task.latitude}
+                longitude={task.longitude}
+                country={task.country}
+                city={task.city}
+              />
+            ),
+          });
+          stats.push({
+            key: "poster",
+            label: <><Bot size="1em" aria-hidden /> Posted by</>,
+            value: (
+              <Link href={`/u/${task.poster.username}`}>
+                <code>{task.poster.username}</code>
+              </Link>
+            ),
+          });
+          return (
+            <dl className="task-stats">
+              {stats.map((s) => (
+                <div className="stat" key={s.key}>
+                  <dt className="muted">{s.label}</dt>
+                  <dd>{s.value}</dd>
+                </div>
+              ))}
+            </dl>
+          );
+        })()}
 
         <p className="muted" style={{ marginTop: "1rem", marginBottom: 0, fontSize: "0.85rem" }}>
-          Unspent escrow above the winning bid is refunded to the poster.
+          ℹ️ Unspent escrow above the winning bid is refunded to the poster.
           {task.deadlineAt &&
             " At the deadline, bidding and submissions close - every undelivered slot is forfeited and its full escrow refunded to the poster; delivered work still awaiting a decision finishes its normal lifecycle."}
         </p>
@@ -343,9 +397,9 @@ export default async function TaskDetail({ params }: { params: Promise<{ id: str
                   <span className="muted">-</span>
                 )}
               </td>
-              <td>{s.human ? <code>{s.human.username}</code> : <span className="muted">-</span>}</td>
-              <td>{s.submittedAt ? s.submittedAt.toLocaleString() : <span className="muted">-</span>}</td>
-              <td>{s.decidedAt ? s.decidedAt.toLocaleString() : <span className="muted">-</span>}</td>
+              <td>{s.human ? <Link href={`/u/${s.human.username}`}><code>{s.human.username}</code></Link> : <span className="muted">-</span>}</td>
+              <td>{s.submittedAt ? <FormattedDateTime ts={s.submittedAt.getTime()} /> : <span className="muted">-</span>}</td>
+              <td>{s.decidedAt ? <FormattedDateTime ts={s.decidedAt.getTime()} /> : <span className="muted">-</span>}</td>
             </tr>
           ))}
         </tbody>
@@ -369,12 +423,12 @@ export default async function TaskDetail({ params }: { params: Promise<{ id: str
                 const p = b.human.humanProfile;
                 const paid = p ? p.microPaid + p.taskPaid + p.jobPaid : 0;
                 const denom = p ? paid + p.rejectedCount : 0;
-                const rep = denom === 0 ? null : Math.round((paid / denom) * 100);
+                const rep = denom === 0 ? 100 : Math.round((paid / denom) * 100);
                 return (
                   <tr key={b.id}>
-                    <td><code>{b.human.username}</code></td>
+                    <td><Link href={`/u/${b.human.username}`}><code>{b.human.username}</code></Link></td>
                     <td>{fmtUsdt(Number(b.amountUsdt))} USDT</td>
-                    <td>{rep == null ? <span className="muted">unrated</span> : `${rep}% (${paid})`}</td>
+                    <td>{denom === 0 ? <>100% <span className="muted">(new)</span></> : `${rep}% (${paid})`}</td>
                     <td>{humanizeEnum(b.status)}</td>
                     <td style={{ whiteSpace: "pre-wrap", maxWidth: "30ch" }}>{b.message || <span className="muted">-</span>}</td>
                   </tr>
@@ -401,14 +455,14 @@ export default async function TaskDetail({ params }: { params: Promise<{ id: str
               <div key={s.id} style={{ marginBottom: "1.5rem" }}>
                 <p className="muted" style={{ marginBottom: "0.5rem", fontSize: "0.9em" }}>
                   Slot #{i + 1} ·{" "}
-                  {s.human ? <code>{s.human.username}</code> : "(unclaimed)"} · {humanizeEnum(s.status)}
+                  {s.human ? <Link href={`/u/${s.human.username}`}><code>{s.human.username}</code></Link> : "(unclaimed)"} · {humanizeEnum(s.status)}
                 </p>
                 <EvidenceList
                   items={s.evidence.map((e) => ({
                     id: e.id,
                     type: e.type,
                     bodyText: e.bodyText,
-                    transcodedAt: e.transcodedAt ? e.transcodedAt.toISOString() : null,
+                    transcodedAt: e.transcodedAt ? e.transcodedAt.getTime() : null,
                     mimePrimary: e.mimePrimary,
                     mimeFallback: e.mimeFallback,
                     width: e.width,
@@ -441,7 +495,7 @@ export default async function TaskDetail({ params }: { params: Promise<{ id: str
                 id: mySlot.id,
                 status: mySlot.status,
                 rejectionReason: mySlot.rejectionReason ?? null,
-                decidedAt: mySlot.decidedAt?.toISOString() ?? null,
+                decidedAt: mySlot.decidedAt?.getTime() ?? null,
                 hasDispute: !!mySlot.dispute,
               }
             : null

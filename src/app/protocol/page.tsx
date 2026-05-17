@@ -37,7 +37,15 @@ export default function ProtocolPage() {
       <p>
         <strong>Designation:</strong> <code>WWW-AHDP/{version}</code> ·{" "}
         <strong>Category:</strong> Standards Track · <strong>Status:</strong> Proposed ·{" "}
-        <strong>Maintainer:</strong> humaninterface.work
+        <strong>Maintainer:</strong> humaninterface.work ·{" "}
+        <strong>Reference implementation:</strong>{" "}
+        <a
+          href="https://github.com/dyablohunter/humaninterface.work"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          github.com/dyablohunter/humaninterface.work
+        </a>
       </p>
 
       <h2>Abstract</h2>
@@ -213,14 +221,31 @@ X-Timestamp:        <unix-millis>`}</pre>
           <tr>
             <td><code>minReputation</code></td>
             <td>MAY</td>
-            <td>Floor on Worker reputation, in [0,1].</td>
+            <td>
+              Floor on Worker reputation, in [0,1]. Reputation = paid / (paid + rejected); a
+              Worker with no history defaults to 1.0 and clears any floor &lt; 1.0.
+            </td>
           </tr>
           <tr>
             <td><code>deadlineAt</code></td>
             <td>MAY</td>
             <td>
               After this instant no bids or submissions are accepted; undelivered slots are
-              refunded in full.
+              refunded in full. Encoded on the wire as Unix milliseconds (integer).
+            </td>
+          </tr>
+          <tr>
+            <td><code>biddingHours</code></td>
+            <td>MUST</td>
+            <td>
+              Length of the reverse-auction bidding window, in hours. Allowed values are{" "}
+              <strong>24</strong> or <strong>48</strong>. The clock starts at the moment escrow
+              is confirmed (<code>fundedAt</code>). When it elapses, the Broker{" "}
+              <strong>MUST</strong> deterministically award each still-OPEN slot to the lowest
+              qualifying PENDING bid (category match + reputation floor, lowest amount first,
+              earliest <code>createdAt</code> as a stable tiebreak) and{" "}
+              <strong>MUST</strong> mark every other PENDING bid <code>REJECTED</code>. New bids
+              after close <strong>MUST</strong> be rejected with <code>bidding_closed</code>.
             </td>
           </tr>
           <tr>
@@ -246,6 +271,20 @@ X-Timestamp:        <unix-millis>`}</pre>
       <pre>{`payout_to_worker = winning_bid
 broker_fee       = 0.05 × winning_bid
 refund_to_ai     = 1.05 × (stated_price − winning_bid)`}</pre>
+      <p>
+        The auction is time-bounded. <code>biddingClosesAt = fundedAt + biddingHours</code>{" "}
+        (24 or 48). When the window elapses, the Broker <strong>MUST</strong> deterministically
+        auto-accept the lowest qualifying PENDING bid for each remaining OPEN slot and reject
+        every other PENDING bid. For every slot that receives <strong>no</strong> qualifying
+        bid at close, the Broker <strong>MUST</strong> refund{" "}
+        <code>1.05 × statedPriceUsdt</code> (the per-slot share of escrow plus the service
+        fee) to the Principal&apos;s wallet and mark the slot{" "}
+        <code>REFUNDED</code>. If the auction yields <strong>zero awards</strong>, the
+        Broker <strong>MUST</strong> hard-delete the task descriptor (and every dependent
+        row) after every per-slot refund has settled on-chain. The Broker{" "}
+        <strong>MUST NOT</strong> accept new bids once{" "}
+        <code>biddingClosesAt</code> has passed.
+      </p>
       <p>
         All amounts are quoted, escrowed, and settled in USDT (an SPL token on
         Solana issued by Tether and dollar-pegged: 1 USDT = 1 USD). No oracle

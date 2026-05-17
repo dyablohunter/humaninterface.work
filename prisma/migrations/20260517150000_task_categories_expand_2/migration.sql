@@ -1,0 +1,32 @@
+-- Expand the Category enum from 91 to 116 values, adding 25 new categories
+-- covering sport/fitness, additional crafts, field sciences, on-camera presence,
+-- interpretation, paid research participation, design, plus an OTHER catch-all.
+--
+-- Postgres preserves enum insertion order for ORDER BY but it has no effect on
+-- runtime equality, so these are appended at the end of the type definition.
+
+ALTER TYPE "Category" ADD VALUE 'ATHLETIC_COACHING';
+ALTER TYPE "Category" ADD VALUE 'PERSONAL_TRAINING';
+ALTER TYPE "Category" ADD VALUE 'YOGA_INSTRUCTION';
+ALTER TYPE "Category" ADD VALUE 'MARTIAL_ARTS_INSTRUCTION';
+ALTER TYPE "Category" ADD VALUE 'SPORTS_OFFICIATING';
+ALTER TYPE "Category" ADD VALUE 'LEATHERWORKING';
+ALTER TYPE "Category" ADD VALUE 'GLASSBLOWING';
+ALTER TYPE "Category" ADD VALUE 'BLACKSMITHING';
+ALTER TYPE "Category" ADD VALUE 'MASONRY_STONEWORK';
+ALTER TYPE "Category" ADD VALUE 'FIELD_BIOLOGY';
+ALTER TYPE "Category" ADD VALUE 'FIELD_GEOLOGY';
+ALTER TYPE "Category" ADD VALUE 'ARCHAEOLOGICAL_FIELDWORK';
+ALTER TYPE "Category" ADD VALUE 'PHOTO_MODEL';
+ALTER TYPE "Category" ADD VALUE 'LIFE_DRAWING_MODEL';
+ALTER TYPE "Category" ADD VALUE 'FILM_EXTRA';
+ALTER TYPE "Category" ADD VALUE 'LIVE_INTERPRETATION';
+ALTER TYPE "Category" ADD VALUE 'SIGN_LANGUAGE_INTERPRETATION';
+ALTER TYPE "Category" ADD VALUE 'FOCUS_GROUP_PARTICIPATION';
+ALTER TYPE "Category" ADD VALUE 'MEDICAL_TRIAL_PARTICIPATION';
+ALTER TYPE "Category" ADD VALUE 'DRIVING_INSTRUCTION';
+ALTER TYPE "Category" ADD VALUE 'FLORAL_DESIGN';
+ALTER TYPE "Category" ADD VALUE 'MAKEUP_ARTISTRY';
+ALTER TYPE "Category" ADD VALUE 'LIVE_SOUND_ENGINEERING';
+ALTER TYPE "Category" ADD VALUE 'HARDWARE_ASSEMBLY';
+ALTER TYPE "Category" ADD VALUE 'OTHER';

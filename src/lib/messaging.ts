@@ -65,7 +65,8 @@ export async function assertCanMessage(
 
 export interface ThreadSummary {
   humanUsername: string;
-  lastAt: string | null;
+  /** Unix milliseconds of the most recent message in the thread, or null. */
+  lastAt: number | null;
   unread: number; // messages from the human the AI has not read
 }
 
@@ -100,7 +101,7 @@ export async function threadList(taskId: string): Promise<ThreadSummary[]> {
       ]);
       return {
         humanUsername: username,
-        lastAt: last ? last.createdAt.toISOString() : null,
+        lastAt: last ? last.createdAt.getTime() : null,
         unread,
       };
     }),
@@ -108,7 +109,7 @@ export async function threadList(taskId: string): Promise<ThreadSummary[]> {
 
   // Most recently active threads first; never-messaged threads last.
   return summaries.sort((a, b) => {
-    if (a.lastAt && b.lastAt) return b.lastAt.localeCompare(a.lastAt);
+    if (a.lastAt && b.lastAt) return b.lastAt - a.lastAt;
     if (a.lastAt) return -1;
     if (b.lastAt) return 1;
     return a.humanUsername.localeCompare(b.humanUsername);

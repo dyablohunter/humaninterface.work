@@ -6,6 +6,7 @@ import { PetitionForm } from "@/components/PetitionForm";
 import { PetitionVoteButton } from "@/components/PetitionVoteButton";
 import { humanizeEnum } from "@/lib/tier-ui";
 import { eligibleSupporterCounts, votesNeeded, isEligibleVoter } from "@/lib/petitions";
+import { FormattedDate } from "@/components/time/FormattedDate";
 
 export const dynamic = "force-dynamic";
 
@@ -86,7 +87,7 @@ export default async function PetitionsPage() {
           <div className="card-row-main">
             <h3 className="petition-title">{p.title}</h3>
             <p className="muted text-sm mb-sm">
-              by <code>{p.author.username}</code> · {p.createdAt.toLocaleDateString()}
+              by <code>{p.author.username}</code> · <FormattedDate ts={p.createdAt.getTime()} format="medium" />
               {p.status !== "OPEN" && (
                 <>
                   {" · "}
@@ -103,7 +104,7 @@ export default async function PetitionsPage() {
             ) : p.status === "QUALIFIED" ? (
               <p className="muted text-sm m-0">
                 Reached the threshold - submitted to the admin for review
-                {p.qualifiedAt && <> on {p.qualifiedAt.toLocaleDateString()}</>}.
+                {p.qualifiedAt && <> on <FormattedDate ts={p.qualifiedAt.getTime()} format="medium" /></>}.
               </p>
             ) : null}
           </div>
