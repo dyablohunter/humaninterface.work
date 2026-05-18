@@ -157,7 +157,10 @@ export async function POST(req: NextRequest) {
       escrowAddress: escrow,
       memo: task.id,
       usdtAmount: quote.totalUsdt,
-      tolerancePct: 1,
+      // Exact-amount: USDT-SPL has no transfer fee, so the platform requires
+      // the deposit to match the quote. Surplus is silently retained; any
+      // shortfall is rejected with `amount_below_quote`.
+      tolerancePct: 0,
     },
     pricing: {
       statedPriceUsdt: input.statedPriceUsdt,

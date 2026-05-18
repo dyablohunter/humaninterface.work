@@ -1,12 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { authenticateAny } from "@/lib/auth/middleware";
+import { enforceUserRateLimit } from "@/lib/rate-limit";
 import { suggestionSchema } from "@/lib/validation";
 
 export async function POST(req: NextRequest) {
   const rawBody = await req.text();
   const auth = await authenticateAny(req, rawBody);
   if (auth instanceof NextResponse) return auth;
+
+  const rl = await enforceUserRateLimit(auth.userId, "suggest");
+  if (rl) return rl;
 
   let body: unknown;
   try {

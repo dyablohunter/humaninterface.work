@@ -103,12 +103,17 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     ? devOverride
     : countryToTimezone(ipToCountry(extractClientIp(hdrs)));
 
+  // Per-request CSP nonce set by ./proxy.ts. Stamped onto our inline
+  // theme-bootstrap <Script> so it survives strict CSP.
+  const nonce = hdrs.get("x-nonce") ?? undefined;
+
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
         {/* Apply the stored / preferred theme before first paint to avoid FOUC.
-            Uses next/script with beforeInteractive — React 19 warns on raw <script> in JSX. */}
-        <Script id="theme-bootstrap" strategy="beforeInteractive">
+            Uses next/script with beforeInteractive — React 19 warns on raw <script> in JSX.
+            `nonce` is set by ./proxy.ts so this inline block clears strict CSP. */}
+        <Script id="theme-bootstrap" strategy="beforeInteractive" nonce={nonce}>
           {`(function(){try{var s=localStorage.getItem('theme');if(s==='light'||s==='dark'){document.documentElement.dataset.theme=s;}}catch(e){}})();`}
         </Script>
       </head>

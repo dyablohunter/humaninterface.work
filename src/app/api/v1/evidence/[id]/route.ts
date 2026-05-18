@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { readFile } from "node:fs/promises";
+import { createReadStream } from "node:fs";
+import { stat } from "node:fs/promises";
+import { Readable } from "node:stream";
 import { prisma } from "@/lib/db";
 import { getSession } from "@/lib/auth/session";
+import { acquireServeSlot } from "@/lib/serve-queue";
 
 export const runtime = "nodejs";
 
@@ -49,13 +52,66 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
     return NextResponse.json({ error: "variant_unavailable" }, { status: 404 });
   }
 
-  const buf = await readFile(path);
-  return new NextResponse(new Uint8Array(buf), {
+  // Stat first so we know the file size before admission. If the file is
+  // missing on disk (orphaned DB row), surface a 404.
+  let size: number;
+  try {
+    const st = await stat(path);
+    if (!st.isFile()) {
+      return NextResponse.json({ error: "variant_unavailable" }, { status: 404 });
+    }
+    size = st.size;
+  } catch {
+    return NextResponse.json({ error: "variant_unavailable" }, { status: 404 });
+  }
+
+  // Memory + concurrency gate. Refuse cheaply if the host is already loaded.
+  const slot = await acquireServeSlot(size);
+  if (!slot.ok) {
+    const status = slot.reason === "insufficient_memory" ? 503 : 503;
+    const retryAfter = slot.reason === "queue_full" ? "5" : "10";
+    return NextResponse.json(
+      { error: slot.reason, retryAfterSec: Number(retryAfter) },
+      { status, headers: { "Retry-After": retryAfter } },
+    );
+  }
+
+  // Stream the file rather than reading it into a Buffer. The Node read
+  // stream uses ~64 KB chunks regardless of file size — total heap impact is
+  // small and constant per request, which is the real fix for the OOM vector.
+  // We release the queue slot when the stream closes (success, abort, or
+  // error). The signal from the request abort propagates into the stream so
+  // an early disconnect frees the slot immediately.
+  const nodeStream = createReadStream(path);
+  let released = false;
+  const release = () => {
+    if (released) return;
+    released = true;
+    slot.release();
+  };
+  nodeStream.once("close", release);
+  nodeStream.once("error", release);
+
+  // Tie request abort → stream destroy so we don't keep reading after the
+  // client disconnects.
+  if (req.signal) {
+    if (req.signal.aborted) nodeStream.destroy();
+    else
+      req.signal.addEventListener(
+        "abort",
+        () => nodeStream.destroy(),
+        { once: true },
+      );
+  }
+
+  const webStream = Readable.toWeb(nodeStream) as unknown as ReadableStream<Uint8Array>;
+  return new NextResponse(webStream, {
     status: 200,
     headers: {
       "Content-Type": mime,
-      "Content-Length": String(buf.length),
-      "Cache-Control": task.privacy === "PRIVATE" ? "private, max-age=60" : "public, max-age=86400",
+      "Content-Length": String(size),
+      "Cache-Control":
+        task.privacy === "PRIVATE" ? "private, max-age=60" : "public, max-age=86400",
     },
   });
 }

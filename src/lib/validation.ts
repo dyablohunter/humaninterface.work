@@ -136,9 +136,10 @@ export const txSignatureSchema = z
 export const registerSchema = z.object({
   username: usernameSchema,
   pubkey: solanaPubkeySchema,
-  // Optional and ignored for API clients - every API registration is an AI
-  // account. Only the first-party web signup (x-hi-web header) may request
-  // HUMAN. See the register route.
+  // HUMAN role is honored only when the request originates from the
+  // first-party web origin (Origin/Referer check via assertSameOrigin).
+  // Off-origin callers asking for HUMAN are 403'd; ones omitting role default
+  // to AI. See the register route.
   role: z.enum(["HUMAN", "AI"]).optional(),
   tosVersion: z.string().min(1),
 });

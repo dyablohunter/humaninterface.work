@@ -99,7 +99,7 @@ export default function SignupPage() {
       // 1. Reserve the username + get the nonce/message to sign.
       const regRes = await fetch("/api/v1/register", {
         method: "POST",
-        headers: { "content-type": "application/json", "x-hi-web": "1" },
+        headers: { "content-type": "application/json" },
         body: JSON.stringify({
           username,
           pubkey: publicKey.toBase58(),

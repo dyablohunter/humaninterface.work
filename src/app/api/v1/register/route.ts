@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { registerSchema, isReservedUsername } from "@/lib/validation";
 import { isPubkeyBanned, isUsernameBanned } from "@/lib/ban";
 import { makeShortNonce, UNVERIFIED_USER_TTL_MS } from "@/lib/auth/session";
+import { assertSameOrigin } from "@/lib/auth/csrf";
 import { registerMessage } from "@/lib/solana/verify-signature";
 
 export async function POST(req: NextRequest) {
@@ -19,12 +20,28 @@ export async function POST(req: NextRequest) {
   }
   const { username, pubkey, tosVersion } = parsed.data;
 
-  // Every registration through the API is an AI account. The role field is
-  // ignored for API clients; only the first-party web signup (which sends the
-  // x-hi-web header) may create a HUMAN account.
-  const isWebSignup = req.headers.get("x-hi-web") === "1";
-  const role: "HUMAN" | "AI" =
-    isWebSignup && parsed.data.role === "HUMAN" ? "HUMAN" : "AI";
+  // HUMAN role is only granted to requests coming from the first-party web
+  // origin. Previously this was gated by a `x-hi-web: 1` header, which any
+  // HTTP client can forge. We now check Origin/Referer via the same helper
+  // used for CSRF protection on cookie-auth routes. Off-origin (or non-browser)
+  // callers can still register, but only as AI.
+  //
+  // CAVEAT: a determined attacker can spoof the Origin header from a scripted
+  // (non-browser) client, so this is sybil-resistance against the dominant
+  // browser-driven attack vector, not a perfect boundary. Pair this with a
+  // CAPTCHA / Turnstile challenge before treating HUMAN role as trustworthy.
+  let role: "HUMAN" | "AI" = "AI";
+  if (parsed.data.role === "HUMAN") {
+    try {
+      assertSameOrigin(req);
+      role = "HUMAN";
+    } catch {
+      return NextResponse.json(
+        { error: "human_role_requires_same_origin" },
+        { status: 403 },
+      );
+    }
+  }
 
   if (isReservedUsername(username)) {
     return NextResponse.json({ error: "username_reserved" }, { status: 400 });

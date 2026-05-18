@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { authenticateHuman } from "@/lib/auth/middleware";
 import { checkSameOrigin } from "@/lib/auth/csrf";
+import { enforceUserRateLimit } from "@/lib/rate-limit";
 import { bidSchema } from "@/lib/validation-tasks";
 import { checkBidEligibility, awardSlot } from "@/lib/bids";
 
@@ -21,6 +22,9 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   const { id } = await ctx.params;
   const auth = await authenticateHuman();
   if (auth instanceof NextResponse) return auth;
+
+  const rl = await enforceUserRateLimit(auth.userId, "bid");
+  if (rl) return rl;
 
   let body: unknown;
   try {
@@ -67,33 +71,74 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   const autoAccept = amountUsdt <= instantAcceptUsdt;
 
   if (autoAccept) {
-    const slotId = await prisma.$transaction((tx) =>
+    const result = await prisma.$transaction((tx) =>
       awardSlot(tx, { taskId: id, humanId: auth.userId, amountUsdt, message }),
     );
-    if (!slotId) {
-      // No open slot - fall back to a pending bid so the AI can still pick them.
-      const bid = await upsertPendingBid(id, auth.userId, amountUsdt, message);
+    if (result.ok) {
+      return NextResponse.json({ ok: true, status: "ACCEPTED", slotId: result.slotId });
+    }
+    if (result.reason === "bidding_closed") {
+      return NextResponse.json({ error: "bidding_closed" }, { status: 400 });
+    }
+    if (result.reason === "amount_not_monotonic") {
       return NextResponse.json(
-        { ok: true, status: "PENDING", bidId: bid.id, note: "no_open_slot_bid_queued" },
-        { status: 202 },
+        { error: "bid_must_be_monotonically_decreasing" },
+        { status: 409 },
       );
     }
-    return NextResponse.json({ ok: true, status: "ACCEPTED", slotId });
+    // No open slot - fall back to a pending bid so the AI can still pick them.
+    const pending = await upsertPendingBid(id, auth.userId, amountUsdt, message);
+    if (!pending.ok) {
+      return NextResponse.json(
+        { error: "bid_must_be_monotonically_decreasing" },
+        { status: 409 },
+      );
+    }
+    return NextResponse.json(
+      { ok: true, status: "PENDING", bidId: pending.bid.id, note: "no_open_slot_bid_queued" },
+      { status: 202 },
+    );
   }
 
-  const bid = await upsertPendingBid(id, auth.userId, amountUsdt, message);
-  return NextResponse.json({ ok: true, status: "PENDING", bidId: bid.id });
+  const pending = await upsertPendingBid(id, auth.userId, amountUsdt, message);
+  if (!pending.ok) {
+    return NextResponse.json(
+      { error: "bid_must_be_monotonically_decreasing" },
+      { status: 409 },
+    );
+  }
+  return NextResponse.json({ ok: true, status: "PENDING", bidId: pending.bid.id });
 }
 
+/**
+ * Upsert a PENDING bid for `(taskId, humanId)`. Reverse auctions are
+ * monotonically decreasing — re-bidding while PENDING may only lower the
+ * amount, never raise it. Returns `{ ok: false }` if the caller tried to
+ * raise their pending bid; caller turns that into a 409.
+ */
 async function upsertPendingBid(
   taskId: string,
   humanId: string,
   amountUsdt: number,
   message?: string | null,
 ) {
-  return prisma.bid.upsert({
-    where: { taskId_humanId: { taskId, humanId } },
-    create: { taskId, humanId, amountUsdt, message: message ?? null, status: "PENDING" },
-    update: { amountUsdt, message: message ?? null, status: "PENDING" },
+  return prisma.$transaction(async (tx) => {
+    const existing = await tx.bid.findUnique({
+      where: { taskId_humanId: { taskId, humanId } },
+      select: { amountUsdt: true, status: true },
+    });
+    if (
+      existing &&
+      existing.status === "PENDING" &&
+      Number(existing.amountUsdt) < amountUsdt
+    ) {
+      return { ok: false as const };
+    }
+    const bid = await tx.bid.upsert({
+      where: { taskId_humanId: { taskId, humanId } },
+      create: { taskId, humanId, amountUsdt, message: message ?? null, status: "PENDING" },
+      update: { amountUsdt, message: message ?? null, status: "PENDING" },
+    });
+    return { ok: true as const, bid };
   });
 }

@@ -15,6 +15,7 @@ import { MeTabs } from "@/components/MeTabs";
 import { SwitchView } from "@/components/SwitchView";
 import { FormattedDateTime } from "@/components/time/FormattedDateTime";
 import { LocationDisplay } from "@/components/LocationDisplay";
+import { isDevOnlyEnabled } from "@/lib/dev-only";
 
 export const dynamic = "force-dynamic";
 
@@ -642,25 +643,29 @@ export default async function AdminPage() {
               </>
             ),
           },
-          {
-            id: "testing",
-            label: "Testing",
-            content: (
-              <>
-                <h2>AI mock test suite</h2>
-                <p className="muted">
-                  Exercise the AI ↔ human delegation flow end-to-end against the
-                  live API. Hits all run through the configured{" "}
-                  <code>TEST_AI_*</code> keypair (signed) or your admin cookie.
-                  Dev / staging only - never enable in production.
-                </p>
-                <AdminTestSuite
-                  testAiUsername={process.env.TEST_AI_USERNAME || "test_ai"}
-                  testAiPubkey={process.env.TEST_AI_PUBKEY ?? null}
-                />
-              </>
-            ),
-          },
+          ...(isDevOnlyEnabled()
+            ? [
+                {
+                  id: "testing",
+                  label: "Testing",
+                  content: (
+                    <>
+                      <h2>AI mock test suite</h2>
+                      <p className="muted">
+                        Exercise the AI ↔ human delegation flow end-to-end against the
+                        live API. Hits all run through the configured{" "}
+                        <code>TEST_AI_*</code> keypair (signed) or your admin cookie.
+                        Dev / staging only - tab and routes are removed in production.
+                      </p>
+                      <AdminTestSuite
+                        testAiUsername={process.env.TEST_AI_USERNAME || "test_ai"}
+                        testAiPubkey={process.env.TEST_AI_PUBKEY ?? null}
+                      />
+                    </>
+                  ),
+                },
+              ]
+            : []),
         ]}
       />
     </>

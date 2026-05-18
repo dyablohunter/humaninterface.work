@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { requireAdmin } from "@/lib/auth/middleware";
 import { checkSameOrigin } from "@/lib/auth/csrf";
+import { assertDevOnly } from "@/lib/dev-only";
 import { banAndBlockAi } from "@/lib/ban";
 
 const Kind = z.enum([
@@ -45,6 +46,8 @@ const schema = z.discriminatedUnion("action", [
  * existing review row to a chosen status.
  */
 export async function POST(req: NextRequest) {
+  const denied = assertDevOnly();
+  if (denied) return denied;
   const csrf = checkSameOrigin(req);
   if (csrf) return csrf;
   const auth = await requireAdmin();

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { LAMPORTS_PER_SOL, PublicKey } from "@solana/web3.js";
 import { getAccount, getAssociatedTokenAddressSync } from "@solana/spl-token";
 import { requireAdmin } from "@/lib/auth/middleware";
+import { assertDevOnly } from "@/lib/dev-only";
 import { solanaConnection, getUsdtMint } from "@/lib/solana/client";
 
 /**
@@ -10,6 +11,8 @@ import { solanaConnection, getUsdtMint } from "@/lib/solana/client";
  * sanity-check that escrow has both gas and USDT before running a scenario.
  */
 export async function GET(req: NextRequest) {
+  const denied = assertDevOnly();
+  if (denied) return denied;
   const auth = await requireAdmin();
   if (auth instanceof NextResponse) return auth;
 

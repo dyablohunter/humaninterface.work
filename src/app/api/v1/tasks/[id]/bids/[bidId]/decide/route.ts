@@ -60,7 +60,7 @@ export async function POST(
     return NextResponse.json({ error: "bidder_already_has_slot", slotId: ownedSlot.id }, { status: 409 });
   }
 
-  const slotId = await prisma.$transaction((tx) =>
+  const result = await prisma.$transaction((tx) =>
     awardSlot(tx, {
       taskId: id,
       humanId: bid.humanId,
@@ -68,8 +68,19 @@ export async function POST(
       message: bid.message,
     }),
   );
-  if (!slotId) {
-    return NextResponse.json({ error: "no_open_slots" }, { status: 409 });
+  if (result.ok) {
+    return NextResponse.json({ ok: true, status: "ACCEPTED", slotId: result.slotId });
   }
-  return NextResponse.json({ ok: true, status: "ACCEPTED", slotId });
+  if (result.reason === "bidding_closed") {
+    return NextResponse.json({ error: "bidding_closed" }, { status: 400 });
+  }
+  if (result.reason === "amount_not_monotonic") {
+    // Shouldn't happen on the AI-decide path (the AI accepts the stored bid
+    // amount), but surface it rather than swallow.
+    return NextResponse.json(
+      { error: "bid_amount_changed_underneath" },
+      { status: 409 },
+    );
+  }
+  return NextResponse.json({ error: "no_open_slots" }, { status: 409 });
 }

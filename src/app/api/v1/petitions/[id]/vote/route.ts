@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { authenticateHuman } from "@/lib/auth/middleware";
 import { checkSameOrigin } from "@/lib/auth/csrf";
+import { enforceUserRateLimit } from "@/lib/rate-limit";
 import { isEligibleVoter, maybeQualify } from "@/lib/petitions";
 
 /**
@@ -17,6 +18,9 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   const { id } = await ctx.params;
   const auth = await authenticateHuman();
   if (auth instanceof NextResponse) return auth;
+
+  const rl = await enforceUserRateLimit(auth.userId, "vote");
+  if (rl) return rl;
 
   const petition = await prisma.petition.findUnique({
     where: { id },

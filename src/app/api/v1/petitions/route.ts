@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { authenticateHuman } from "@/lib/auth/middleware";
 import { checkSameOrigin } from "@/lib/auth/csrf";
+import { enforceUserRateLimit } from "@/lib/rate-limit";
 import { petitionSchema } from "@/lib/validation";
 import { enforceHumanContentPolicy } from "@/lib/moderation";
 
@@ -15,6 +16,9 @@ export async function POST(req: NextRequest) {
   if (csrf) return csrf;
   const auth = await authenticateHuman();
   if (auth instanceof NextResponse) return auth;
+
+  const rl = await enforceUserRateLimit(auth.userId, "petition");
+  if (rl) return rl;
 
   let body: unknown;
   try {

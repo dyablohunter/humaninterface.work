@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/auth/middleware";
+import { checkSameOrigin } from "@/lib/auth/csrf";
+import { assertDevOnly } from "@/lib/dev-only";
 import { ensureTestAiUser, signTestAiRequest } from "@/lib/test-ai";
 
 const schema = z.object({
@@ -10,6 +12,12 @@ const schema = z.object({
   body: z.unknown().optional(),
   /** `ai` signs with the test AI keypair; `admin` forwards the admin cookie. */
   as: z.enum(["ai", "admin"]).default("ai"),
+  /**
+   * Explicit confirmation required for `as: "ai"` so a leaked XSS that doesn't
+   * know this key cannot use the proxy to sign requests with the test AI
+   * keypair. The Testing-tab UI sets this automatically.
+   */
+  confirmTestAi: z.boolean().optional(),
 });
 
 /**
@@ -24,6 +32,10 @@ const schema = z.object({
  * `upstreamStatus` and the parsed JSON / raw text body in `data` / `text`.
  */
 export async function POST(req: NextRequest) {
+  const denied = assertDevOnly();
+  if (denied) return denied;
+  const csrf = checkSameOrigin(req);
+  if (csrf) return csrf;
   const auth = await requireAdmin();
   if (auth instanceof NextResponse) return auth;
 
@@ -41,10 +53,22 @@ export async function POST(req: NextRequest) {
     );
   }
   const { method, as } = parsed.data;
+  if (as === "ai" && parsed.data.confirmTestAi !== true) {
+    return NextResponse.json(
+      { error: "confirm_test_ai_required" },
+      { status: 400 },
+    );
+  }
   let path = parsed.data.path.trim();
   if (!path.startsWith("/")) path = "/" + path;
   // Reject path traversal / Windows-style separators before URL resolution.
   if (path.includes("..") || path.includes("\\")) {
+    return NextResponse.json({ error: "invalid_path" }, { status: 400 });
+  }
+  // Reject protocol-relative (`//host/...`) or scheme-prefixed URLs that would
+  // make `new URL(path, origin)` resolve to an external host. (`new URL` would
+  // happily parse `//evil.com/api/v1/x` as `https://evil.com/api/v1/x`.)
+  if (path.startsWith("//") || /^\/[^/]*:/.test(path)) {
     return NextResponse.json({ error: "invalid_path" }, { status: 400 });
   }
   if (!path.startsWith("/api/v1/")) {
@@ -52,9 +76,23 @@ export async function POST(req: NextRequest) {
   }
 
   const url = new URL(path, req.nextUrl.origin);
+  // Final origin guard: the resolved URL must point back at us. If `path`
+  // somehow re-introduced an external host (e.g. via a future URL parser
+  // quirk), refuse rather than fan the request out.
+  if (url.origin !== req.nextUrl.origin) {
+    return NextResponse.json({ error: "invalid_path" }, { status: 400 });
+  }
   // Block re-entrant calls to this endpoint to prevent recursion / loops.
   if (/^\/api\/v1\/admin\/test-call(\/|$)/.test(url.pathname)) {
     return NextResponse.json({ error: "reentrant_call_forbidden" }, { status: 400 });
+  }
+  // No admin-on-admin pivots. The `as: "admin"` mode forwards the live admin
+  // cookie to the upstream; allowing it to call other /api/v1/admin/* routes
+  // would let any CSRF/XSS into this endpoint reach every admin action in one
+  // hop. Test-AI signed mode would not be admin-authed at the upstream, but
+  // disallow it too for symmetry.
+  if (/^\/api\/v1\/admin\//.test(url.pathname)) {
+    return NextResponse.json({ error: "admin_pivot_forbidden" }, { status: 400 });
   }
   // Re-check normalised pathname for traversal sneaking through URL parsing.
   if (!url.pathname.startsWith("/api/v1/") || url.pathname.includes("..")) {

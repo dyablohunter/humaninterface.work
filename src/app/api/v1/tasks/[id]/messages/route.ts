@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { authenticateAny } from "@/lib/auth/middleware";
+import { enforceUserRateLimit } from "@/lib/rate-limit";
 import { messageSchema } from "@/lib/validation-tasks";
 import { assertCanMessage, threadList } from "@/lib/messaging";
 import { enforceHumanContentPolicy } from "@/lib/moderation";
@@ -17,6 +18,9 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   const rawBody = await req.text();
   const auth = await authenticateAny(req, rawBody);
   if (auth instanceof NextResponse) return auth;
+
+  const rl = await enforceUserRateLimit(auth.userId, "message");
+  if (rl) return rl;
 
   let body: unknown;
   try {

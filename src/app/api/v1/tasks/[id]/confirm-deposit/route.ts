@@ -5,7 +5,11 @@ import { confirmDepositSchema } from "@/lib/validation-tasks";
 import { fetchUsdtTransfer } from "@/lib/solana/verify-tx";
 import { Prisma } from "@prisma/client";
 
-const TOLERANCE_PCT = 0.01;
+// USDT-SPL is a fixed-decimal token with no transfer fee, so the deposit
+// amount must equal the quote. Underfunding even by a hair shifts loss onto
+// the platform (payouts and refunds still use the full quoted amounts).
+// Surplus is fine — we silently keep it.
+const TOLERANCE_PCT = 0;
 
 export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;

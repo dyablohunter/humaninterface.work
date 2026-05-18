@@ -768,7 +768,13 @@ function ApiConsolePanel() {
         method: "POST",
         credentials: "include",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ method, path, body: parsedBody, as }),
+        body: JSON.stringify({
+          method,
+          path,
+          body: parsedBody,
+          as,
+          ...(as === "ai" ? { confirmTestAi: true } : {}),
+        }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -854,7 +860,7 @@ function StatusCheckPanel() {
         method: "POST",
         credentials: "include",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ method: "GET", path, as: "ai" }),
+        body: JSON.stringify({ method: "GET", path, as: "ai", confirmTestAi: true }),
       });
       const data = await res.json();
       if (!res.ok) {

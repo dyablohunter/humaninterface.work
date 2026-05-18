@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/auth/middleware";
 import { checkSameOrigin } from "@/lib/auth/csrf";
+import { assertDevOnly } from "@/lib/dev-only";
 import { purgeStale } from "@/lib/jobs/purge-stale";
 import { transcodePending } from "@/lib/jobs/transcode";
 import { recheckPendingModeration } from "@/lib/moderation";
@@ -17,6 +18,8 @@ const schema = z.object({
  * for the next worker iteration.
  */
 export async function POST(req: NextRequest) {
+  const denied = assertDevOnly();
+  if (denied) return denied;
   const csrf = checkSameOrigin(req);
   if (csrf) return csrf;
   const auth = await requireAdmin();
